@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rocketer Settings</title>
+    <link rel="stylesheet" href="styles/options.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="rocket-icon">🚀</span>
+                    <h1>Rocketer Settings</h1>
+                </div>
+                <div class="version">v1.0.0</div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="settings-grid">
+                <!-- Notification Settings -->
+                <section class="settings-section">
+                    <h2>🔔 Notification Settings</h2>
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            <input type="checkbox" id="enableNotifications" class="setting-checkbox">
+                            <span class="checkbox-custom"></span>
+                            Enable launch notifications
+                        </label>
+                        <p class="setting-description">Get notified when rocket launches are approaching</p>
+                    </div>
+
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            Notification timing
+                        </label>
+                        <select id="notificationTiming" class="setting-select">
+                            <option value="15">15 minutes before</option>
+                            <option value="30">30 minutes before</option>
+                            <option value="60" selected>1 hour before</option>
+                            <option value="120">2 hours before</option>
+                        </select>
+                        <p class="setting-description">How far in advance to notify you</p>
+                    </div>
+
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            <input type="checkbox" id="soundNotifications" class="setting-checkbox">
+                            <span class="checkbox-custom"></span>
+                            Sound notifications
+                        </label>
+                        <p class="setting-description">Play sound with notifications</p>
+                    </div>
+                </section>
+
+                <!-- Data & Updates -->
+                <section class="settings-section">
+                    <h2>🔄 Data & Updates</h2>
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            Check for updates every
+                        </label>
+                        <select id="updateInterval" class="setting-select">
+                            <option value="15">15 minutes</option>
+                            <option value="30" selected>30 minutes</option>
+                            <option value="60">1 hour</option>
+                            <option value="120">2 hours</option>
+                        </select>
+                        <p class="setting-description">How often to check for new launches</p>
+                    </div>
+
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            <input type="checkbox" id="autoRefresh" class="setting-checkbox" checked>
+                            <span class="checkbox-custom"></span>
+                            Auto-refresh launch data
+                        </label>
+                        <p class="setting-description">Automatically update launch information</p>
+                    </div>
+
+                    <div class="setting-item action-item">
+                        <button id="refreshNowBtn" class="btn-secondary">
+                            <span class="btn-icon">🔄</span>
+                            Refresh Now
+                        </button>
+                        <p class="setting-description">Manually refresh launch data</p>
+                    </div>
+                </section>
+
+                <!-- Filters -->
+                <section class="settings-section">
+                    <h2>🔍 Launch Filters</h2>
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            Show launches from
+                        </label>
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="filterSpaceX" class="filter-checkbox" checked>
+                                <span class="checkbox-custom"></span>
+                                SpaceX
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="filterNASA" class="filter-checkbox" checked>
+                                <span class="checkbox-custom"></span>
+                                NASA
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="filterULA" class="filter-checkbox" checked>
+                                <span class="checkbox-custom"></span>
+                                ULA
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="filterBlueOrigin" class="filter-checkbox" checked>
+                                <span class="checkbox-custom"></span>
+                                Blue Origin
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="filterRocketLab" class="filter-checkbox" checked>
+                                <span class="checkbox-custom"></span>
+                                Rocket Lab
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="filterESA" class="filter-checkbox" checked>
+                                <span class="checkbox-custom"></span>
+                                ESA
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="filterISRO" class="filter-checkbox" checked>
+                                <span class="checkbox-custom"></span>
+                                ISRO
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="filterJAXA" class="filter-checkbox" checked>
+                                <span class="checkbox-custom"></span>
+                                JAXA
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="filterCNSA" class="filter-checkbox" checked>
+                                <span class="checkbox-custom"></span>
+                                CNSA (China)
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="filterRoscosmos" class="filter-checkbox" checked>
+                                <span class="checkbox-custom"></span>
+                                Roscosmos
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="filterOthers" class="filter-checkbox" checked>
+                                <span class="checkbox-custom"></span>
+                                Other Providers
+                            </label>
+                        </div>
+                        <p class="setting-description">Select which launch providers to track</p>
+                    </div>
+
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            <input type="checkbox" id="onlyWithStreams" class="setting-checkbox">
+                            <span class="checkbox-custom"></span>
+                            Only show launches with live streams
+                        </label>
+                        <p class="setting-description">Filter out launches without video streams</p>
+                    </div>
+                </section>
+
+                <!-- Appearance -->
+                <section class="settings-section">
+                    <h2>🎨 Appearance</h2>
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            Theme
+                        </label>
+                        <select id="theme" class="setting-select">
+                            <option value="auto" selected>Auto (System)</option>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                        </select>
+                        <p class="setting-description">Choose your preferred color theme</p>
+                    </div>
+
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            <input type="checkbox" id="compactMode" class="setting-checkbox">
+                            <span class="checkbox-custom"></span>
+                            Compact popup layout
+                        </label>
+                        <p class="setting-description">Show more launches in less space</p>
+                    </div>
+
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            <input type="checkbox" id="showBadge" class="setting-checkbox" checked>
+                            <span class="checkbox-custom"></span>
+                            Show launch count badge
+                        </label>
+                        <p class="setting-description">Display number of upcoming launches on extension icon</p>
+                    </div>
+                </section>
+
+                <!-- About & Info -->
+                <section class="settings-section">
+                    <h2>ℹ️ About</h2>
+                    <div class="about-content">
+                        <div class="about-item">
+                            <strong>Rocketer</strong> - Space Launch Tracker
+                        </div>
+                        <div class="about-item">
+                            Version 1.0.0
+                        </div>
+                        <div class="about-item">
+                            Data provided by <a href="https://thespacedevs.com/" target="_blank">The Space Devs API</a>
+                        </div>
+                        <div class="about-item">
+                            <a href="https://github.com/your-repo/rocketer" target="_blank" class="link">
+                                View on GitHub
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="setting-item action-item">
+                        <div class="action-buttons">
+                            <button id="exportBtn" class="btn-secondary">
+                                <span class="btn-icon">📤</span>
+                                Export Settings
+                            </button>
+                            <button id="importBtn" class="btn-secondary">
+                                <span class="btn-icon">📥</span>
+                                Import Settings
+                            </button>
+                            <button id="resetBtn" class="btn-danger">
+                                <span class="btn-icon">🔄</span>
+                                Reset to Defaults
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <div class="save-indicator" id="saveIndicator">
+                <span class="save-icon">✓</span>
+                Settings saved automatically
+            </div>
+        </footer>
+    </div>
+
+    <!-- Hidden file input for import -->
+    <input type="file" id="importFile" accept=".json" style="display: none;">
+
+    <script src="options.js"></script>
+</body>
+</html> 

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rocketer - Upcoming Launches</title>
+    <link rel="stylesheet" href="styles/popup.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <span class="rocket-icon">🚀</span>
+                <h1>Rocketer</h1>
+            </div>
+            <button class="refresh-btn" id="refreshBtn" title="Refresh launches">
+                <span class="refresh-icon">🔄</span>
+            </button>
+        </header>
+
+        <div class="status-bar">
+            <span id="statusText">Loading...</span>
+            <span id="lastUpdate" class="last-update"></span>
+        </div>
+
+        <div class="content">
+            <div id="loadingSpinner" class="loading">
+                <div class="spinner"></div>
+                <p>Loading upcoming launches...</p>
+            </div>
+
+            <div id="launchesContainer" class="launches-container" style="display: none;">
+                <!-- Launches will be populated here -->
+            </div>
+
+            <div id="noLaunches" class="no-launches" style="display: none;">
+                <div class="empty-state">
+                    <span class="empty-icon">🌌</span>
+                    <h3>No Upcoming Launches</h3>
+                    <p>No rocket launches scheduled for the next 24 hours.</p>
+                    <button id="checkAgainBtn" class="btn-secondary">Check Again</button>
+                </div>
+            </div>
+
+            <div id="errorState" class="error-state" style="display: none;">
+                <span class="error-icon">⚠️</span>
+                <h3>Unable to Load Launches</h3>
+                <p>Please check your internet connection and try again.</p>
+                <button id="retryBtn" class="btn-secondary">Retry</button>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <button id="settingsBtn" class="btn-text">Settings</button>
+            <button id="aboutBtn" class="btn-text">About</button>
+        </footer>
+    </div>
+
+    <!-- Launch Card Template -->
+    <template id="launchCardTemplate">
+        <div class="launch-card">
+            <div class="launch-header">
+                <div class="launch-info">
+                    <h3 class="launch-name"></h3>
+                    <p class="launch-provider"></p>
+                </div>
+                <div class="launch-countdown">
+                    <span class="countdown-time"></span>
+                    <span class="countdown-label">until launch</span>
+                </div>
+            </div>
+            
+            <div class="launch-details">
+                <div class="detail-item">
+                    <span class="detail-label">🗓️ Date:</span>
+                    <span class="detail-value launch-date"></span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">📍 Location:</span>
+                    <span class="detail-value launch-location"></span>
+                </div>
+                <div class="detail-item mission-description">
+                    <span class="detail-label">📋 Mission:</span>
+                    <span class="detail-value launch-mission"></span>
+                </div>
+            </div>
+
+            <div class="launch-actions">
+                <button class="btn-secondary watch-pip" style="display: none;">
+                    <span class="btn-icon">▶️</span>
+                    Play Stream
+                </button>
+                <button class="btn-secondary more-info">
+                    <span class="btn-icon">ℹ️</span>
+                    More Info
+                </button>
+            </div>
+        </div>
+    </template>
+
+    <script src="popup.js"></script>
+</body>
+</html> 
