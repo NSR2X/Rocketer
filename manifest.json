@@ -15,7 +15,17 @@
     "https://ll.thespacedevs.com/*",
     "https://*.youtube.com/*",
     "https://*.twitch.tv/*",
-    "https://en.wikipedia.org/*"
+    "https://en.wikipedia.org/*",
+    "https://www.spacex.com/*",
+    "https://www.nasa.gov/*",
+    "https://www.blueorigin.com/*",
+    "https://www.ulalaunch.com/*",
+    "https://www.rocketlabusa.com/*",
+    "https://www.esa.int/*",
+    "https://www.isro.gov.in/*",
+    "https://global.jaxa.jp/*",
+    "https://www.spacenews.com/*",
+    "https://www.google.com/*"
   ],
   "background": {
     "service_worker": "background.js"

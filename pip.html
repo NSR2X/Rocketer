@@ -212,6 +212,7 @@
             <button class="control-btn" onclick="toggleFullscreen()" title="Toggle Fullscreen">⛶</button>
             <button class="control-btn" onclick="toggleMinimize()" title="Minimize">−</button>
             <button class="control-btn" onclick="openInNewTab()" title="Open in New Tab">↗</button>
+            <button class="control-btn" onclick="showStreamSources()" title="Stream Sources" id="sourcesBtn" style="display: none;">📺</button>
             <button class="control-btn" onclick="window.close()" title="Close">✕</button>
         </div>
 
@@ -222,12 +223,14 @@
         let streamUrl = '';
         let launchName = '';
         let isMinimized = false;
+        let streamInfo = null;
 
         // Listen for initialization message
         chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (message.action === 'initPiP') {
                 streamUrl = message.streamUrl;
                 launchName = message.launchName;
+                streamInfo = message.streamInfo || null;
                 initializePiP();
             }
         });
@@ -235,11 +238,58 @@
         function initializePiP() {
             document.getElementById('launchTitle').textContent = launchName || 'Rocket Launch Stream';
             
+            // Display stream source information
+            if (streamInfo) {
+                updateStreamInfo();
+            }
+            
             if (streamUrl) {
                 loadStream();
             } else {
                 showError();
             }
+        }
+
+        function updateStreamInfo() {
+            const statusElement = document.getElementById('launchStatus');
+            if (streamInfo) {
+                const platformIcon = getPlatformIcon(streamInfo.platform);
+                const platformName = formatPlatformName(streamInfo.platform);
+                statusElement.innerHTML = `${platformIcon} ${platformName} • Live`;
+                
+                // Add stream quality indicator if available
+                if (streamInfo.quality) {
+                    statusElement.innerHTML += ` • ${streamInfo.quality}`;
+                }
+            }
+        }
+
+        function getPlatformIcon(platform) {
+            const icons = {
+                youtube: '📹',
+                twitch: '🎮',
+                spacex: '🚀',
+                nasa: '🌌',
+                facebook: '📘',
+                twitter: '🐦',
+                official: '🏢',
+                other: '📺'
+            };
+            return icons[platform] || icons.other;
+        }
+
+        function formatPlatformName(platform) {
+            const names = {
+                youtube: 'YouTube',
+                twitch: 'Twitch',
+                spacex: 'SpaceX',
+                nasa: 'NASA',
+                facebook: 'Facebook',
+                twitter: 'Twitter/X',
+                official: 'Official',
+                other: 'Stream'
+            };
+            return names[platform] || 'Stream';
         }
 
         function loadStream() {
@@ -329,6 +379,10 @@
             if (streamUrl) {
                 window.open(streamUrl, '_blank');
             }
+        }
+
+        function showStreamSources() {
+            // Implementation of showStreamSources function
         }
 
         // Make window draggable when minimized

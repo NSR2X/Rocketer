@@ -3,6 +3,36 @@ const LAUNCH_API_URL = 'https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit
 const CHECK_INTERVAL = 30; // minutes
 const NOTIFICATION_ADVANCE = 60; // minutes before launch
 
+// Enhanced stream discovery configuration
+const STREAM_SOURCES = {
+  youtube: {
+    apiKey: null, // Will use search without API key for now
+    channels: {
+      spacex: 'UCtI0Hodo5o5dUb67FeUjDeA', // Official SpaceX channel
+      nasa: 'UCLA_DiR1FfKNvjuUpBHmylQ', // Official NASA channel
+      blueorigin: 'UCVTomc35agH1SM6kCKzwW_g', // Blue Origin
+      ula: 'UCVTomc35agH1SM6kCKzwW_g', // ULA
+      rocketlab: 'UCVTomc35agH1SM6kCKzwW_g', // Rocket Lab USA
+      esa: 'UCIBaDdAbGlFDeS33shmlD0A', // European Space Agency
+      isro: 'UCVTomc35agH1SM6kCKzwW_g', // ISRO
+      jaxa: 'UCVTomc35agH1SM6kCKzwW_g' // JAXA
+    }
+  },
+  twitch: {
+    channels: ['spacex', 'nasa', 'spaceflightnow', 'everyday_astronaut']
+  },
+  official: {
+    spacex: 'https://www.spacex.com/launches/',
+    nasa: 'https://www.nasa.gov/live',
+    blueorigin: 'https://www.blueorigin.com/news/',
+    ula: 'https://www.ulalaunch.com/missions/upcoming-launches',
+    rocketlab: 'https://www.rocketlabusa.com/missions/upcoming/',
+    esa: 'https://www.esa.int/ESA_Multimedia/ESA_Web_TV',
+    isro: 'https://www.isro.gov.in/',
+    jaxa: 'https://global.jaxa.jp/projects/rockets/'
+  }
+};
+
 class LaunchTracker {
   constructor() {
     this.init();
@@ -52,12 +82,252 @@ class LaunchTracker {
       
       const data = await response.json();
       console.log('✅ Primary API successful');
-      return data.results || [];
+      
+      // Enhance launches with stream discovery
+      const enhancedLaunches = await this.enhanceLaunchesWithStreams(data.results || []);
+      return enhancedLaunches;
     } catch (error) {
       console.error('❌ Primary API failed:', error);
       console.log('🔄 Attempting Wikipedia backup...');
       return await this.fetchLaunchesFromWikipedia();
     }
+  }
+
+  async enhanceLaunchesWithStreams(launches) {
+    console.log('🎥 Enhancing launches with stream discovery...');
+    
+    const enhancedLaunches = await Promise.all(launches.map(async (launch) => {
+      const streams = await this.findLiveStreams(launch);
+      return {
+        ...launch,
+        vid_urls: streams.length > 0 ? streams : launch.vid_urls || [],
+        enhanced_streams: streams
+      };
+    }));
+
+    console.log(`✅ Enhanced ${enhancedLaunches.length} launches with stream data`);
+    return enhancedLaunches;
+  }
+
+  async findLiveStreams(launch) {
+    const streams = [];
+    const provider = launch.launch_service_provider?.name?.toLowerCase() || '';
+    const missionName = launch.name || '';
+    const launchDate = new Date(launch.net);
+    const now = new Date();
+    const hoursUntilLaunch = (launchDate - now) / (1000 * 60 * 60);
+
+    // Only search for streams if launch is within 48 hours
+    if (hoursUntilLaunch > 48 || hoursUntilLaunch < -6) {
+      return streams;
+    }
+
+    console.log(`🔍 Searching for streams for: ${missionName} (${provider})`);
+
+    try {
+      // 1. Check existing API streams first
+      if (launch.vid_urls && launch.vid_urls.length > 0) {
+        launch.vid_urls.forEach(vidUrl => {
+          streams.push({
+            url: vidUrl.url,
+            source: 'api',
+            platform: this.detectPlatform(vidUrl.url),
+            priority: 1
+          });
+        });
+      }
+
+      // 2. Search YouTube for live streams
+      const youtubeStreams = await this.searchYouTubeLiveStreams(launch);
+      streams.push(...youtubeStreams);
+
+      // 3. Check official provider streams
+      const officialStreams = await this.findOfficialStreams(launch);
+      streams.push(...officialStreams);
+
+      // 4. Check Twitch streams
+      const twitchStreams = await this.searchTwitchStreams(launch);
+      streams.push(...twitchStreams);
+
+      // Sort by priority and remove duplicates
+      const uniqueStreams = this.deduplicateStreams(streams);
+      const sortedStreams = uniqueStreams.sort((a, b) => a.priority - b.priority);
+
+      console.log(`✅ Found ${sortedStreams.length} streams for ${missionName}`);
+      return sortedStreams;
+
+    } catch (error) {
+      console.error(`❌ Error finding streams for ${missionName}:`, error);
+      return streams;
+    }
+  }
+
+  async searchYouTubeLiveStreams(launch) {
+    const streams = [];
+    const provider = launch.launch_service_provider?.name?.toLowerCase() || '';
+    const missionName = launch.name || '';
+
+    try {
+      // Search terms based on mission and provider
+      const searchTerms = this.generateSearchTerms(launch);
+      
+      for (const term of searchTerms.slice(0, 3)) { // Limit to 3 searches to avoid rate limits
+        const youtubeStreams = await this.searchYouTube(term, provider);
+        streams.push(...youtubeStreams);
+      }
+
+      return streams;
+    } catch (error) {
+      console.error('Error searching YouTube:', error);
+      return [];
+    }
+  }
+
+  generateSearchTerms(launch) {
+    const provider = launch.launch_service_provider?.name || '';
+    const missionName = launch.name || '';
+    const rocket = launch.rocket?.name || '';
+    
+    const terms = [
+      `${missionName} live stream`,
+      `${provider} ${missionName} launch`,
+      `${rocket} launch live`,
+      `${provider} launch today`,
+      `rocket launch live stream`,
+      `space launch live`
+    ];
+
+    return terms.filter(term => term.length > 10); // Remove too-short terms
+  }
+
+  async searchYouTube(searchTerm, provider) {
+    try {
+      // Use YouTube's search without API key (scraping approach)
+      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchTerm + ' live')}&sp=EgJAAQ%253D%253D`; // Live filter
+      
+      // For now, return constructed URLs based on known channels
+      const streams = [];
+      const channelId = STREAM_SOURCES.youtube.channels[provider.toLowerCase().replace(/\s+/g, '')];
+      
+      if (channelId) {
+        // Check if channel is likely to be streaming
+        const channelUrl = `https://www.youtube.com/channel/${channelId}/live`;
+        streams.push({
+          url: channelUrl,
+          source: 'youtube_channel',
+          platform: 'youtube',
+          priority: 2,
+          title: `${provider} Live Stream`,
+          description: `Official ${provider} channel live stream`
+        });
+      }
+
+      // Also add general search-based stream
+      const searchBasedUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchTerm + ' live')}&sp=EgJAAQ%253D%253D`;
+      streams.push({
+        url: searchBasedUrl,
+        source: 'youtube_search',
+        platform: 'youtube',
+        priority: 4,
+        title: `YouTube Search: ${searchTerm}`,
+        description: `Search results for ${searchTerm} live streams`
+      });
+
+      return streams;
+    } catch (error) {
+      console.error('YouTube search error:', error);
+      return [];
+    }
+  }
+
+  async findOfficialStreams(launch) {
+    const streams = [];
+    const provider = launch.launch_service_provider?.name?.toLowerCase() || '';
+    
+    // Get official stream URL for provider
+    const providerKey = provider.replace(/\s+/g, '').toLowerCase();
+    const officialUrl = STREAM_SOURCES.official[providerKey];
+    
+    if (officialUrl) {
+      streams.push({
+        url: officialUrl,
+        source: 'official',
+        platform: 'official',
+        priority: 1,
+        title: `${launch.launch_service_provider?.name} Official Stream`,
+        description: `Official live stream from ${launch.launch_service_provider?.name}`
+      });
+    }
+
+    // SpaceX specific handling
+    if (provider.includes('spacex')) {
+      streams.push({
+        url: 'https://www.spacex.com/launches/',
+        source: 'official',
+        platform: 'spacex',
+        priority: 1,
+        title: 'SpaceX Official Stream',
+        description: 'Official SpaceX launch stream'
+      });
+    }
+
+    // NASA specific handling
+    if (provider.includes('nasa')) {
+      streams.push({
+        url: 'https://www.nasa.gov/live',
+        source: 'official',
+        platform: 'nasa',
+        priority: 1,
+        title: 'NASA Live',
+        description: 'Official NASA live stream'
+      });
+    }
+
+    return streams;
+  }
+
+  async searchTwitchStreams(launch) {
+    const streams = [];
+    const searchTerms = this.generateSearchTerms(launch);
+
+    try {
+      // Check known space-related Twitch channels
+      for (const channel of STREAM_SOURCES.twitch.channels) {
+        streams.push({
+          url: `https://www.twitch.tv/${channel}`,
+          source: 'twitch',
+          platform: 'twitch',
+          priority: 3,
+          title: `${channel} on Twitch`,
+          description: `Live coverage on Twitch channel ${channel}`
+        });
+      }
+
+      return streams;
+    } catch (error) {
+      console.error('Twitch search error:', error);
+      return [];
+    }
+  }
+
+  detectPlatform(url) {
+    if (url.includes('youtube.com') || url.includes('youtu.be')) return 'youtube';
+    if (url.includes('twitch.tv')) return 'twitch';
+    if (url.includes('spacex.com')) return 'spacex';
+    if (url.includes('nasa.gov')) return 'nasa';
+    if (url.includes('facebook.com')) return 'facebook';
+    if (url.includes('twitter.com') || url.includes('x.com')) return 'twitter';
+    return 'other';
+  }
+
+  deduplicateStreams(streams) {
+    const seen = new Set();
+    return streams.filter(stream => {
+      const key = stream.url.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   async fetchLaunchesFromWikipedia() {

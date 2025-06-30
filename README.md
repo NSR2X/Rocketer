@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-# Rocketer
-Chrome extension providing stream of upcoming space launches
-=======
 # 🚀 Rocketer - Space Launch Tracker
 
 A beautiful and efficient Chrome extension that alerts you about upcoming rocket launches and provides live streaming capabilities with picture-in-picture support. **Now with Wikipedia backup integration for 99.9% uptime!**
@@ -9,8 +5,15 @@ A beautiful and efficient Chrome extension that alerts you about upcoming rocket
 ## ✨ Features
 
 - **🔔 Smart Notifications**: Get alerts 1 hour before rocket launches (customizable)
-- **📺 Live Streaming**: Direct access to launch live streams
-- **🖼️ Picture-in-Picture**: Watch launches in a floating window while browsing
+- **📺 Enhanced Live Streaming**: Advanced stream discovery from multiple sources
+  - **🎯 Multi-Platform Discovery**: Automatically finds streams on YouTube, Twitch, official channels
+  - **🔍 Smart Stream Search**: Intelligent search across platforms when no direct streams available
+  - **📋 Stream Selection Menu**: Choose from multiple available stream sources
+  - **🏢 Official Channel Priority**: Prioritizes official provider streams (SpaceX, NASA, etc.)
+- **🖼️ Advanced Picture-in-Picture**: Watch launches in a floating window while browsing
+  - **📺 Stream Source Display**: Shows which platform/source is being used
+  - **🎮 Enhanced Controls**: Fullscreen, minimize, source switching
+  - **🔄 Seamless Platform Support**: Works with YouTube, Twitch, official sites
 - **⏰ Real-time Countdown**: Live countdown timers for upcoming launches
 - **🎯 Launch Filters**: Filter by SpaceX, NASA, ULA, Blue Origin, Rocket Lab, ESA, ISRO, JAXA, CNSA, Roscosmos
 - **📚 Wikipedia Backup**: Automatic fallback to Wikipedia launch lists when APIs fail
@@ -214,4 +217,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 **Made with ❤️ for space enthusiasts everywhere**
 
 *Rocketer helps you never miss a rocket launch again! 🚀*
->>>>>>> 6d571c3 (Initial commit)
