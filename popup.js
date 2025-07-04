@@ -380,12 +380,32 @@ class RocketerPopup {
         const playStreamBtn = card.querySelector('.watch-pip');
         const moreInfoBtn = card.querySelector('.more-info');
         
-        // Play Stream button - only show if stream available
-        const streamUrl = this.getStreamUrl(launch);
-        if (streamUrl) {
+        // Play Stream button - enhanced stream handling
+        const availableStreams = this.getAvailableStreams(launch);
+        if (availableStreams.length > 0) {
             playStreamBtn.style.display = 'flex';
+            
+            // If multiple streams available, show dropdown on click
+            if (availableStreams.length > 1) {
+                playStreamBtn.innerHTML = '<span class="btn-icon">📺</span>Watch Live ▼';
+                playStreamBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.showStreamSelectionMenu(e.target, availableStreams, launch);
+                });
+            } else {
+                // Single stream - direct play
+                playStreamBtn.innerHTML = '<span class="btn-icon">📺</span>Watch Live';
+                playStreamBtn.addEventListener('click', () => {
+                    this.openPictureInPicture(availableStreams[0].url, launch, availableStreams[0]);
+                });
+            }
+        } else {
+            // No streams available - show search option
+            playStreamBtn.style.display = 'flex';
+            playStreamBtn.innerHTML = '<span class="btn-icon">🔍</span>Find Stream';
+            playStreamBtn.classList.add('secondary');
             playStreamBtn.addEventListener('click', () => {
-                this.openPictureInPicture(streamUrl, launch);
+                this.searchForStreams(launch);
             });
         }
         
@@ -410,6 +430,197 @@ class RocketerPopup {
                 moreInfoBtn.disabled = false;
             }
         });
+    }
+
+    getAvailableStreams(launch) {
+        const streams = [];
+        
+        // Use enhanced streams if available
+        if (launch.enhanced_streams && launch.enhanced_streams.length > 0) {
+            return launch.enhanced_streams;
+        }
+        
+        // Fallback to original vid_urls
+        if (launch.vid_urls && launch.vid_urls.length > 0) {
+            launch.vid_urls.forEach(vidUrl => {
+                streams.push({
+                    url: vidUrl.url,
+                    source: 'api',
+                    platform: this.detectPlatform(vidUrl.url),
+                    priority: 1,
+                    title: 'Official Stream',
+                    description: 'Stream from launch API'
+                });
+            });
+        }
+        
+        return streams.sort((a, b) => a.priority - b.priority);
+    }
+
+    detectPlatform(url) {
+        if (url.includes('youtube.com') || url.includes('youtu.be')) return 'youtube';
+        if (url.includes('twitch.tv')) return 'twitch';
+        if (url.includes('spacex.com')) return 'spacex';
+        if (url.includes('nasa.gov')) return 'nasa';
+        if (url.includes('facebook.com')) return 'facebook';
+        if (url.includes('twitter.com') || url.includes('x.com')) return 'twitter';
+        return 'other';
+    }
+
+    showStreamSelectionMenu(buttonElement, streams, launch) {
+        // Remove existing menu if any
+        const existingMenu = document.querySelector('.stream-menu');
+        if (existingMenu) {
+            existingMenu.remove();
+        }
+
+        // Create stream selection menu
+        const menu = document.createElement('div');
+        menu.className = 'stream-menu';
+        menu.innerHTML = `
+            <div class="stream-menu-header">
+                <span>Choose Stream Source</span>
+                <button class="close-menu">✕</button>
+            </div>
+            <div class="stream-options">
+                ${streams.map((stream, index) => `
+                    <div class="stream-option" data-index="${index}">
+                        <div class="stream-platform">${this.getPlatformIcon(stream.platform)} ${this.formatPlatformName(stream.platform)}</div>
+                        <div class="stream-title">${stream.title || 'Live Stream'}</div>
+                        <div class="stream-description">${stream.description || ''}</div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+
+        // Position menu near button
+        const rect = buttonElement.getBoundingClientRect();
+        menu.style.position = 'absolute';
+        menu.style.top = `${rect.bottom + 5}px`;
+        menu.style.left = `${rect.left}px`;
+        menu.style.zIndex = '1000';
+
+        document.body.appendChild(menu);
+
+        // Add event listeners
+        menu.querySelector('.close-menu').addEventListener('click', () => {
+            menu.remove();
+        });
+
+        menu.querySelectorAll('.stream-option').forEach((option, index) => {
+            option.addEventListener('click', () => {
+                const selectedStream = streams[index];
+                this.openPictureInPicture(selectedStream.url, launch, selectedStream);
+                menu.remove();
+            });
+        });
+
+        // Close menu when clicking outside
+        setTimeout(() => {
+            document.addEventListener('click', function closeMenu(e) {
+                if (!menu.contains(e.target) && e.target !== buttonElement) {
+                    menu.remove();
+                    document.removeEventListener('click', closeMenu);
+                }
+            });
+        }, 100);
+    }
+
+    getPlatformIcon(platform) {
+        const icons = {
+            youtube: '📹',
+            twitch: '🎮',
+            spacex: '🚀',
+            nasa: '🌌',
+            facebook: '📘',
+            twitter: '🐦',
+            official: '🏢',
+            other: '📺'
+        };
+        return icons[platform] || icons.other;
+    }
+
+    formatPlatformName(platform) {
+        const names = {
+            youtube: 'YouTube',
+            twitch: 'Twitch',
+            spacex: 'SpaceX',
+            nasa: 'NASA',
+            facebook: 'Facebook',
+            twitter: 'Twitter/X',
+            official: 'Official',
+            other: 'Other'
+        };
+        return names[platform] || 'Unknown';
+    }
+
+    searchForStreams(launch) {
+        const provider = launch.launch_service_provider?.name || '';
+        const missionName = launch.name || '';
+        
+        // Open multiple search tabs for different platforms
+        const searchQueries = [
+            `https://www.youtube.com/results?search_query=${encodeURIComponent(missionName + ' live stream')}&sp=EgJAAQ%253D%253D`,
+            `https://www.twitch.tv/search?term=${encodeURIComponent(missionName + ' launch')}`,
+            `https://www.google.com/search?q=${encodeURIComponent(missionName + ' live stream launch')}`
+        ];
+
+        // Open first search tab
+        chrome.tabs.create({ url: searchQueries[0] });
+        
+        // Show notification about manual search
+        this.showNotification('🔍 Stream Search', `Opened search for ${missionName} live streams. Check YouTube, Twitch, and official channels.`);
+    }
+
+    showNotification(title, message) {
+        // Create a temporary notification element
+        const notification = document.createElement('div');
+        notification.className = 'temp-notification';
+        notification.innerHTML = `
+            <div class="notification-content">
+                <strong>${title}</strong>
+                <p>${message}</p>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Remove after 3 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 3000);
+    }
+
+    getStreamUrl(launch) {
+        const streams = this.getAvailableStreams(launch);
+        return streams.length > 0 ? streams[0].url : null;
+    }
+
+    async openPictureInPicture(streamUrl, launch, streamInfo = null) {
+        try {
+            // Create a new tab with our PiP player
+            const tab = await chrome.tabs.create({
+                url: chrome.runtime.getURL('pip.html'),
+                active: false
+            });
+            
+            // Send stream data to the PiP page
+            setTimeout(() => {
+                chrome.tabs.sendMessage(tab.id, {
+                    action: 'initPiP',
+                    streamUrl: streamUrl,
+                    launchName: launch.name,
+                    streamInfo: streamInfo
+                });
+            }, 500);
+            
+        } catch (error) {
+            console.error('Error opening PiP:', error);
+            // Fallback to regular tab
+            chrome.tabs.create({ url: streamUrl });
+        }
     }
 
     async getValidatedInfoUrl(launch) {
@@ -545,37 +756,6 @@ class RocketerPopup {
         }
         
         return null; // No official URL found
-    }
-
-    getStreamUrl(launch) {
-        if (launch.vid_urls && launch.vid_urls.length > 0) {
-            return launch.vid_urls[0].url;
-        }
-        return null;
-    }
-
-    async openPictureInPicture(streamUrl, launch) {
-        try {
-            // Create a new tab with our PiP player
-            const tab = await chrome.tabs.create({
-                url: chrome.runtime.getURL('pip.html'),
-                active: false
-            });
-            
-            // Send stream data to the PiP page
-            setTimeout(() => {
-                chrome.tabs.sendMessage(tab.id, {
-                    action: 'initPiP',
-                    streamUrl: streamUrl,
-                    launchName: launch.name
-                });
-            }, 500);
-            
-        } catch (error) {
-            console.error('Error opening PiP:', error);
-            // Fallback to regular tab
-            chrome.tabs.create({ url: streamUrl });
-        }
     }
 
     updateCountdown(card, launch) {
