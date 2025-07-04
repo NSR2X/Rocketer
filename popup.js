@@ -380,225 +380,38 @@ class RocketerPopup {
         const playStreamBtn = card.querySelector('.watch-pip');
         const moreInfoBtn = card.querySelector('.more-info');
         
-        // Play Stream button - enhanced stream handling
-        const availableStreams = this.getAvailableStreams(launch);
-        if (availableStreams.length > 0) {
+        // Play Stream button - simple stream handling
+        const streamUrl = this.getStreamUrl(launch);
+        if (streamUrl) {
             playStreamBtn.style.display = 'flex';
-            
-            // If multiple streams available, show dropdown on click
-            if (availableStreams.length > 1) {
-                playStreamBtn.innerHTML = '<span class="btn-icon">📺</span>Watch Live ▼';
-                playStreamBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this.showStreamSelectionMenu(e.target, availableStreams, launch);
-                });
-            } else {
-                // Single stream - direct play
-                playStreamBtn.innerHTML = '<span class="btn-icon">📺</span>Watch Live';
-                playStreamBtn.addEventListener('click', () => {
-                    this.openPictureInPicture(availableStreams[0].url, launch, availableStreams[0]);
-                });
-            }
-        } else {
-            // No streams available - show search option
-            playStreamBtn.style.display = 'flex';
-            playStreamBtn.innerHTML = '<span class="btn-icon">🔍</span>Find Stream';
-            playStreamBtn.classList.add('secondary');
+            playStreamBtn.innerHTML = '<span class="btn-icon">📺</span>Watch Live';
             playStreamBtn.addEventListener('click', () => {
-                this.searchForStreams(launch);
+                this.openPictureInPicture(streamUrl, launch);
             });
+        } else {
+            playStreamBtn.style.display = 'none';
         }
         
-        // More Info button - always show with validated priority URL
-        moreInfoBtn.addEventListener('click', async () => {
-            // Show loading state
-            const originalText = moreInfoBtn.innerHTML;
-            moreInfoBtn.innerHTML = '<span class="btn-icon">⏳</span>Loading...';
-            moreInfoBtn.disabled = true;
-            
-            try {
-                const infoUrl = await this.getValidatedInfoUrl(launch);
-                chrome.tabs.create({ url: infoUrl });
-            } catch (error) {
-                console.error('Error getting validated URL:', error);
-                // Fallback to space news search
-                const launchName = encodeURIComponent(launch.name || 'rocket launch');
-                chrome.tabs.create({ url: `https://www.spacenews.com/?s=${launchName}` });
-            } finally {
-                // Restore button state
-                moreInfoBtn.innerHTML = originalText;
-                moreInfoBtn.disabled = false;
-            }
+        // More Info button - show details within extension
+        moreInfoBtn.addEventListener('click', () => {
+            this.showLaunchDetails(launch);
         });
-    }
-
-    getAvailableStreams(launch) {
-        const streams = [];
-        
-        // Use enhanced streams if available
-        if (launch.enhanced_streams && launch.enhanced_streams.length > 0) {
-            return launch.enhanced_streams;
-        }
-        
-        // Fallback to original vid_urls
-        if (launch.vid_urls && launch.vid_urls.length > 0) {
-            launch.vid_urls.forEach(vidUrl => {
-                streams.push({
-                    url: vidUrl.url,
-                    source: 'api',
-                    platform: this.detectPlatform(vidUrl.url),
-                    priority: 1,
-                    title: 'Official Stream',
-                    description: 'Stream from launch API'
-                });
-            });
-        }
-        
-        return streams.sort((a, b) => a.priority - b.priority);
-    }
-
-    detectPlatform(url) {
-        if (url.includes('youtube.com') || url.includes('youtu.be')) return 'youtube';
-        if (url.includes('twitch.tv')) return 'twitch';
-        if (url.includes('spacex.com')) return 'spacex';
-        if (url.includes('nasa.gov')) return 'nasa';
-        if (url.includes('facebook.com')) return 'facebook';
-        if (url.includes('twitter.com') || url.includes('x.com')) return 'twitter';
-        return 'other';
-    }
-
-    showStreamSelectionMenu(buttonElement, streams, launch) {
-        // Remove existing menu if any
-        const existingMenu = document.querySelector('.stream-menu');
-        if (existingMenu) {
-            existingMenu.remove();
-        }
-
-        // Create stream selection menu
-        const menu = document.createElement('div');
-        menu.className = 'stream-menu';
-        menu.innerHTML = `
-            <div class="stream-menu-header">
-                <span>Choose Stream Source</span>
-                <button class="close-menu">✕</button>
-            </div>
-            <div class="stream-options">
-                ${streams.map((stream, index) => `
-                    <div class="stream-option" data-index="${index}">
-                        <div class="stream-platform">${this.getPlatformIcon(stream.platform)} ${this.formatPlatformName(stream.platform)}</div>
-                        <div class="stream-title">${stream.title || 'Live Stream'}</div>
-                        <div class="stream-description">${stream.description || ''}</div>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-
-        // Position menu near button
-        const rect = buttonElement.getBoundingClientRect();
-        menu.style.position = 'absolute';
-        menu.style.top = `${rect.bottom + 5}px`;
-        menu.style.left = `${rect.left}px`;
-        menu.style.zIndex = '1000';
-
-        document.body.appendChild(menu);
-
-        // Add event listeners
-        menu.querySelector('.close-menu').addEventListener('click', () => {
-            menu.remove();
-        });
-
-        menu.querySelectorAll('.stream-option').forEach((option, index) => {
-            option.addEventListener('click', () => {
-                const selectedStream = streams[index];
-                this.openPictureInPicture(selectedStream.url, launch, selectedStream);
-                menu.remove();
-            });
-        });
-
-        // Close menu when clicking outside
-        setTimeout(() => {
-            document.addEventListener('click', function closeMenu(e) {
-                if (!menu.contains(e.target) && e.target !== buttonElement) {
-                    menu.remove();
-                    document.removeEventListener('click', closeMenu);
-                }
-            });
-        }, 100);
-    }
-
-    getPlatformIcon(platform) {
-        const icons = {
-            youtube: '📹',
-            twitch: '🎮',
-            spacex: '🚀',
-            nasa: '🌌',
-            facebook: '📘',
-            twitter: '🐦',
-            official: '🏢',
-            other: '📺'
-        };
-        return icons[platform] || icons.other;
-    }
-
-    formatPlatformName(platform) {
-        const names = {
-            youtube: 'YouTube',
-            twitch: 'Twitch',
-            spacex: 'SpaceX',
-            nasa: 'NASA',
-            facebook: 'Facebook',
-            twitter: 'Twitter/X',
-            official: 'Official',
-            other: 'Other'
-        };
-        return names[platform] || 'Unknown';
-    }
-
-    searchForStreams(launch) {
-        const provider = launch.launch_service_provider?.name || '';
-        const missionName = launch.name || '';
-        
-        // Open multiple search tabs for different platforms
-        const searchQueries = [
-            `https://www.youtube.com/results?search_query=${encodeURIComponent(missionName + ' live stream')}&sp=EgJAAQ%253D%253D`,
-            `https://www.twitch.tv/search?term=${encodeURIComponent(missionName + ' launch')}`,
-            `https://www.google.com/search?q=${encodeURIComponent(missionName + ' live stream launch')}`
-        ];
-
-        // Open first search tab
-        chrome.tabs.create({ url: searchQueries[0] });
-        
-        // Show notification about manual search
-        this.showNotification('🔍 Stream Search', `Opened search for ${missionName} live streams. Check YouTube, Twitch, and official channels.`);
-    }
-
-    showNotification(title, message) {
-        // Create a temporary notification element
-        const notification = document.createElement('div');
-        notification.className = 'temp-notification';
-        notification.innerHTML = `
-            <div class="notification-content">
-                <strong>${title}</strong>
-                <p>${message}</p>
-            </div>
-        `;
-        
-        document.body.appendChild(notification);
-        
-        // Remove after 3 seconds
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.remove();
-            }
-        }, 3000);
     }
 
     getStreamUrl(launch) {
-        const streams = this.getAvailableStreams(launch);
-        return streams.length > 0 ? streams[0].url : null;
+        // Use enhanced streams if available, otherwise fallback to API streams
+        if (launch.enhanced_streams && launch.enhanced_streams.length > 0) {
+            return launch.enhanced_streams[0].url;
+        }
+        
+        if (launch.vid_urls && launch.vid_urls.length > 0) {
+            return launch.vid_urls[0].url;
+        }
+        
+        return null;
     }
 
-    async openPictureInPicture(streamUrl, launch, streamInfo = null) {
+    async openPictureInPicture(streamUrl, launch) {
         try {
             // Create a new tab with our PiP player
             const tab = await chrome.tabs.create({
@@ -611,151 +424,168 @@ class RocketerPopup {
                 chrome.tabs.sendMessage(tab.id, {
                     action: 'initPiP',
                     streamUrl: streamUrl,
-                    launchName: launch.name,
-                    streamInfo: streamInfo
+                    launchName: launch.name
                 });
             }, 500);
             
         } catch (error) {
             console.error('Error opening PiP:', error);
-            // Fallback to regular tab
-            chrome.tabs.create({ url: streamUrl });
+            // Fallback: try to embed in a modal within the extension
+            this.showStreamModal(streamUrl, launch);
         }
     }
 
-    async getValidatedInfoUrl(launch) {
-        // Priority order with validation: Official > API > Wikipedia > Space news
-        console.log('🔗 Validating URLs for launch:', launch.name);
-        
-        const urlsToTry = [
-            { type: 'official', url: this.getOfficialLaunchUrl(launch) },
-            { type: 'api', url: launch.url },
-            { type: 'wikipedia', url: this.getWikipediaLaunchUrl(launch) }
-        ];
-        
-        // Filter out null/undefined URLs
-        const validUrls = urlsToTry.filter(item => item.url);
-        
-        // Test each URL in priority order
-        for (const { type, url } of validUrls) {
-            console.log(`🧪 Testing ${type} URL:`, url);
-            
-            const isValid = await this.validateUrl(url);
-            if (isValid) {
-                console.log(`✅ ${type} URL validated successfully:`, url);
-                return url;
-            } else {
-                console.log(`❌ ${type} URL failed validation:`, url);
+    showLaunchDetails(launch) {
+        // Create detailed launch information modal within the extension
+        const modal = document.createElement('div');
+        modal.className = 'launch-details-modal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>${launch.name}</h2>
+                    <button class="close-modal">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="detail-section">
+                        <h3>🚀 Launch Information</h3>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <span class="label">Provider:</span>
+                                <span class="value">${launch.launch_service_provider?.name || 'Unknown'}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="label">Rocket:</span>
+                                <span class="value">${launch.rocket?.name || 'Unknown'}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="label">Launch Date:</span>
+                                <span class="value">${this.formatDetailedDate(new Date(launch.net))}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="label">Location:</span>
+                                <span class="value">${launch.pad?.name || 'Unknown'}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="label">Status:</span>
+                                <span class="value">${launch.status?.name || 'Unknown'}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    ${launch.mission ? `
+                    <div class="detail-section">
+                        <h3>🎯 Mission Details</h3>
+                        <div class="mission-info">
+                            <h4>${launch.mission.name || 'Mission'}</h4>
+                            <p>${launch.mission.description || 'No mission description available.'}</p>
+                            ${launch.mission.type ? `<p><strong>Type:</strong> ${launch.mission.type}</p>` : ''}
+                            ${launch.mission.orbit ? `<p><strong>Orbit:</strong> ${launch.mission.orbit.name}</p>` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    ${launch.rocket ? `
+                    <div class="detail-section">
+                        <h3>🚀 Vehicle Information</h3>
+                        <div class="vehicle-info">
+                            <p><strong>Configuration:</strong> ${launch.rocket.configuration?.name || launch.rocket.name}</p>
+                            ${launch.rocket.configuration?.description ? `<p>${launch.rocket.configuration.description}</p>` : ''}
+                            ${launch.rocket.configuration?.family ? `<p><strong>Family:</strong> ${launch.rocket.configuration.family}</p>` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    ${this.getStreamUrl(launch) ? `
+                    <div class="detail-section">
+                        <h3>📺 Live Stream</h3>
+                        <button class="stream-btn" onclick="this.parentElement.parentElement.parentElement.parentElement.querySelector('.close-modal').click(); document.querySelector('.rocketer-popup').openPiP('${this.getStreamUrl(launch)}', '${launch.name}')">
+                            <span class="btn-icon">📺</span>Watch Live Stream
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // Add event listeners
+        modal.querySelector('.close-modal').addEventListener('click', () => {
+            modal.remove();
+        });
+
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
             }
-        }
-        
-        // Final fallback to space news search (always works)
-        const launchName = encodeURIComponent(launch.name || 'rocket launch');
-        const fallbackUrl = `https://www.spacenews.com/?s=${launchName}`;
-        console.log('🔄 Using fallback URL:', fallbackUrl);
-        return fallbackUrl;
+        });
+
+        // Store reference for stream button
+        document.querySelector('.rocketer-popup').openPiP = (url, name) => {
+            this.openPictureInPicture(url, { name });
+        };
     }
 
-    async validateUrl(url) {
-        try {
-            // Use a lightweight HEAD request to check if URL exists
-            const response = await fetch(url, {
-                method: 'HEAD',
-                mode: 'no-cors', // Handle CORS issues
-                cache: 'no-cache',
-                signal: AbortSignal.timeout(5000) // 5 second timeout
-            });
-            
-            // In no-cors mode, we can't read the status, but if it doesn't throw, it likely exists
-            return true;
-        } catch (error) {
-            // If HEAD fails, try GET with a short timeout
-            try {
-                const response = await fetch(url, {
-                    method: 'GET',
-                    mode: 'no-cors',
-                    cache: 'no-cache',
-                    signal: AbortSignal.timeout(3000) // 3 second timeout for GET
-                });
-                return true;
-            } catch (getError) {
-                console.log(`URL validation failed for ${url}:`, getError.message);
-                return false;
-            }
-        }
+    showStreamModal(streamUrl, launch) {
+        // Fallback: show stream in a modal within the extension
+        const modal = document.createElement('div');
+        modal.className = 'stream-modal';
+        modal.innerHTML = `
+            <div class="stream-modal-content">
+                <div class="stream-header">
+                    <h3>${launch.name} - Live Stream</h3>
+                    <button class="close-stream">✕</button>
+                </div>
+                <div class="stream-container">
+                    <iframe src="${this.convertToEmbedUrl(streamUrl)}" 
+                            frameborder="0" 
+                            allowfullscreen
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture">
+                    </iframe>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        modal.querySelector('.close-stream').addEventListener('click', () => {
+            modal.remove();
+        });
     }
 
-    getWikipediaLaunchUrl(launch) {
-        try {
-            const launchDate = new Date(launch.net);
-            const year = launchDate.getFullYear();
-            const month = launchDate.getMonth() + 1; // 0-indexed
-            
-            let quarterName;
-            if (month <= 3) {
-                quarterName = 'January%E2%80%93March';
-            } else if (month <= 6) {
-                quarterName = 'April%E2%80%93June';
-            } else if (month <= 9) {
-                quarterName = 'July%E2%80%93September';
-            } else {
-                quarterName = 'October%E2%80%93December';
-            }
-            
-            return `https://en.wikipedia.org/wiki/List_of_spaceflight_launches_in_${quarterName}_${year}`;
-        } catch (error) {
-            console.error('Error generating Wikipedia URL:', error);
-            return null;
+    convertToEmbedUrl(url) {
+        // YouTube
+        if (url.includes('youtube.com/watch')) {
+            const videoId = url.split('v=')[1]?.split('&')[0];
+            return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1` : url;
         }
+        
+        if (url.includes('youtu.be/')) {
+            const videoId = url.split('youtu.be/')[1]?.split('?')[0];
+            return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1` : url;
+        }
+        
+        // Twitch
+        if (url.includes('twitch.tv/')) {
+            const channel = url.split('twitch.tv/')[1]?.split('/')[0];
+            return channel ? `https://player.twitch.tv/?channel=${channel}&parent=${location.hostname}` : url;
+        }
+        
+        // For other URLs, return as-is
+        return url;
     }
 
-    getOfficialLaunchUrl(launch) {
-        const provider = launch.launch_service_provider?.name?.toLowerCase() || '';
-        const missionName = launch.name || '';
-        
-        // SpaceX official pages
-        if (provider.includes('spacex')) {
-            // Try to construct SpaceX mission URL
-            const slug = missionName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
-            return `https://www.spacex.com/launches/${slug}`;
-        }
-        
-        // NASA official pages
-        if (provider.includes('nasa')) {
-            return 'https://www.nasa.gov/launchschedule/';
-        }
-        
-        // ULA official pages
-        if (provider.includes('ula')) {
-            return 'https://www.ulalaunch.com/missions/upcoming-launches';
-        }
-        
-        // Blue Origin
-        if (provider.includes('blue origin')) {
-            return 'https://www.blueorigin.com/news/';
-        }
-        
-        // Rocket Lab
-        if (provider.includes('rocket lab')) {
-            return 'https://www.rocketlabusa.com/missions/upcoming/';
-        }
-        
-        // ESA
-        if (provider.includes('esa') || provider.includes('european')) {
-            return 'https://www.esa.int/Enabling_Support/Space_Transportation/Launch_vehicles';
-        }
-        
-        // ISRO
-        if (provider.includes('isro')) {
-            return 'https://www.isro.gov.in/';
-        }
-        
-        // JAXA
-        if (provider.includes('jaxa')) {
-            return 'https://global.jaxa.jp/projects/rockets/';
-        }
-        
-        return null; // No official URL found
+    formatDetailedDate(date) {
+        return new Intl.DateTimeFormat('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZoneName: 'short'
+        }).format(date);
     }
 
     updateCountdown(card, launch) {
