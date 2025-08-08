@@ -1,41 +1,23 @@
 {
   "manifest_version": 3,
   "name": "Rocketer - Space Launch Tracker",
-  "version": "1.2.2",
-  "description": "Get alerts for upcoming rocket launches with live streams and picture-in-picture viewing",
+  "version": "1.3.0",
+  "description": "Get alerts for upcoming rocket launches with direct links to live streams",
+  "author": "Quantin BODIN",
   "permissions": [
     "storage",
     "alarms",
-    "notifications",
-    "activeTab"
+    "notifications"
   ],
   "host_permissions": [
-    "https://api.spacexdata.com/*",
-    "https://launchlibrary.net/*",
     "https://ll.thespacedevs.com/*",
-    "https://*.youtube.com/*",
-    "https://*.twitch.tv/*",
     "https://en.wikipedia.org/*",
-    "https://www.spacex.com/*",
-    "https://www.nasa.gov/*",
-    "https://www.blueorigin.com/*",
-    "https://www.ulalaunch.com/*",
-    "https://www.rocketlabusa.com/*",
-    "https://www.esa.int/*",
-    "https://www.isro.gov.in/*",
-    "https://global.jaxa.jp/*",
-    "https://www.spacenews.com/*",
-    "https://www.google.com/*"
+    "https://fdo.rocketlaunch.live/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"]
-    }
-  ],
+  
   "action": {
     "default_popup": "popup.html",
     "default_title": "Rocketer",
@@ -53,10 +35,5 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "web_accessible_resources": [
-    {
-      "resources": ["pip.html", "styles/*", "icons/*"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  "web_accessible_resources": []
 } 

@@ -1,17 +1,21 @@
-// Popup script for Rocketer extension - Updated version with comprehensive error handling
+/** Rocketer popup UI controller */
+
 class RocketerPopup {
     constructor() {
         this.launches = [];
         this.countdownInterval = null;
-        this.debugMode = true; // Enable detailed logging
+        this.debugMode = false; // Disable debug logging in production
+        this.debug = (...args) => { if (this.debugMode) console.log(...args); };
         this.init();
+        this.setupAutoRefreshListener();
     }
 
     async init() {
-        console.log('🚀 Rocketer popup initialized - VERSION 1.2.2 with enhanced countdown + word wrap');
-        console.log('DOM ready state:', document.readyState);
-        console.log('Current URL:', window.location.href);
-        console.log('Document title:', document.title);
+    await this.loadDevMode();
+        this.debug('🚀 Rocketer popup initialized');
+        this.debug('DOM ready state:', document.readyState);
+        this.debug('Current URL:', window.location.href);
+        this.debug('Document title:', document.title);
         
         // Verify we're on the right page
         this.verifyCorrectPage();
@@ -22,7 +26,24 @@ class RocketerPopup {
         this.setupEventListeners();
         await this.loadLaunches();
         this.startCountdownUpdates();
+        
+
     }
+
+  async loadDevMode() {
+    try {
+      const { devMode = false } = await chrome.storage.sync.get('devMode');
+      this.debugMode = !!devMode;
+    } catch (_) {
+      this.debugMode = false;
+    }
+    // React to changes at runtime (e.g., set via console)
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'sync' && changes.devMode) {
+        this.debugMode = !!changes.devMode.newValue;
+      }
+    });
+  }
 
     verifyCorrectPage() {
         // Check if we're accidentally loading the options page
@@ -30,10 +51,10 @@ class RocketerPopup {
         const hasSettingsGrid = document.querySelector('.settings-grid') !== null;
         const hasLaunchContainer = document.querySelector('#launchesContainer') !== null;
         
-        console.log('🔍 Page verification:');
-        console.log('- Has checkboxes:', hasCheckboxes);
-        console.log('- Has settings grid:', hasSettingsGrid);
-        console.log('- Has launch container:', hasLaunchContainer);
+        this.debug('🔍 Page verification:');
+        this.debug('- Has checkboxes:', hasCheckboxes);
+        this.debug('- Has settings grid:', hasSettingsGrid);
+        this.debug('- Has launch container:', hasLaunchContainer);
         
         if (hasCheckboxes || hasSettingsGrid) {
             console.error('❌ WRONG PAGE DETECTED! Options page is loading instead of popup!');
@@ -47,7 +68,7 @@ class RocketerPopup {
             return false;
         }
         
-        console.log('✅ Correct popup page verified');
+        this.debug('✅ Correct popup page verified');
         return true;
     }
 
@@ -55,11 +76,11 @@ class RocketerPopup {
         const body = document.body;
         const container = document.querySelector('.container');
         
-        console.log('📐 Layout check:');
-        console.log('- Body width:', body.offsetWidth, 'px');
-        console.log('- Body computed width:', getComputedStyle(body).width);
-        console.log('- Container width:', container ? container.offsetWidth : 'N/A', 'px');
-        console.log('- Viewport width:', window.innerWidth, 'px');
+        this.debug('📐 Layout check:');
+        this.debug('- Body width:', body.offsetWidth, 'px');
+        this.debug('- Body computed width:', getComputedStyle(body).width);
+        this.debug('- Container width:', container ? container.offsetWidth : 'N/A', 'px');
+        this.debug('- Viewport width:', window.innerWidth, 'px');
         
         // Check for extremely narrow width (user's "few pixels" issue)
         if (body.offsetWidth < 100) {
@@ -110,7 +131,7 @@ class RocketerPopup {
             container.style.minWidth = '400px';
         }
         
-        console.log('🔧 Applied emergency layout fixes');
+        this.debug('🔧 Applied emergency layout fixes');
     }
 
     handleCSSError() {
@@ -121,12 +142,31 @@ class RocketerPopup {
             link.rel = 'stylesheet';
             link.href = 'styles/popup.css';
             document.head.appendChild(link);
-            console.log('🔧 Re-injected CSS link');
+            this.debug('🔧 Re-injected CSS link');
+        }
+    }
+
+    handleMissingElement(elementName) {
+        console.error(`Critical UI element missing: ${elementName}`);
+        // Try to recover by creating a minimal fallback UI
+        if (elementName === 'launchesContainer') {
+            const container = document.createElement('div');
+            container.id = 'launchesContainer';
+            container.className = 'launches-container';
+            const contentElement = document.querySelector('.content');
+            if (contentElement) {
+                contentElement.appendChild(container);
+            }
         }
     }
 
     setupEventListeners() {
-        console.log('🔧 Setting up event listeners...');
+        this.debug('🔧 Setting up event listeners...');
+        
+        // Add keyboard navigation support
+        document.addEventListener('keydown', (e) => {
+            this.handleKeyboardNavigation(e);
+        });
         
         // Refresh button
         const refreshBtn = document.getElementById('refreshBtn');
@@ -176,8 +216,15 @@ class RocketerPopup {
         } else {
             console.error('❌ aboutBtn not found');
         }
+
+        const privacyBtn = document.getElementById('privacyBtn');
+        if (privacyBtn) {
+            privacyBtn.addEventListener('click', () => {
+                chrome.tabs.create({ url: chrome.runtime.getURL('privacy-policy.html') });
+            });
+        }
         
-        console.log('✅ Event listeners setup complete');
+        this.debug('✅ Event listeners setup complete');
     }
 
     async loadLaunches() {
@@ -188,8 +235,8 @@ class RocketerPopup {
             const result = await chrome.storage.local.get(['upcomingLaunches', 'lastUpdate']);
             const { upcomingLaunches = [], lastUpdate } = result;
             
-            // Apply provider filtering
-            this.launches = await this.filterLaunchesByProvider(upcomingLaunches);
+            // No filtering - show all launches
+            this.launches = upcomingLaunches;
             this.updateLastUpdateTime(lastUpdate);
             
             if (this.launches.length === 0) {
@@ -198,7 +245,30 @@ class RocketerPopup {
                 this.displayLaunches();
             }
             
-            this.updateStatus(`${this.launches.length} upcoming launches`);
+            // Show smart status based on launch timing
+            let statusMessage = `${this.launches.length} upcoming launches`;
+            
+            // Check if any launches are in auto-refresh window
+            const now = new Date();
+            const launchesNearTime = this.launches.filter(launch => {
+                const minutesUntil = Math.floor((new Date(launch.net) - now) / (1000 * 60));
+                return minutesUntil >= 0 && minutesUntil <= 10;
+            });
+            
+            if (launchesNearTime.length > 0) {
+                const streamsFound = launchesNearTime.filter(launch => 
+                    (launch.enhanced_streams && launch.enhanced_streams.length > 0) ||
+                    (launch.vid_urls && launch.vid_urls.length > 0)
+                ).length;
+                
+                if (streamsFound > 0) {
+                    statusMessage += ` • ${streamsFound} with live streams`;
+                } else {
+                    statusMessage += ` • Auto-checking for streams`;
+                }
+            }
+            
+            this.updateStatus(statusMessage);
             
         } catch (error) {
             console.error('Error loading launches:', error);
@@ -206,38 +276,7 @@ class RocketerPopup {
         }
     }
 
-    async filterLaunchesByProvider(launches) {
-        // Get user filter settings
-        const settings = await chrome.storage.sync.get([
-            'filterSpaceX', 'filterNASA', 'filterULA', 'filterBlueOrigin',
-            'filterRocketLab', 'filterESA', 'filterISRO', 'filterJAXA',
-            'filterCNSA', 'filterRoscosmos', 'filterOthers'
-        ]);
 
-        return launches.filter(launch => {
-            const provider = launch.launch_service_provider?.name?.toLowerCase() || '';
-            
-            // Map providers to filter settings
-            if (provider.includes('spacex') && settings.filterSpaceX) return true;
-            if (provider.includes('nasa') && settings.filterNASA) return true;
-            if (provider.includes('ula') && settings.filterULA) return true;
-            if (provider.includes('blue origin') && settings.filterBlueOrigin) return true;
-            if (provider.includes('rocket lab') && settings.filterRocketLab) return true;
-            if ((provider.includes('esa') || provider.includes('european')) && settings.filterESA) return true;
-            if (provider.includes('isro') && settings.filterISRO) return true;
-            if (provider.includes('jaxa') && settings.filterJAXA) return true;
-            if ((provider.includes('cnsa') || provider.includes('china')) && settings.filterCNSA) return true;
-            if ((provider.includes('roscosmos') || provider.includes('russia')) && settings.filterRoscosmos) return true;
-            
-            // All other providers fall under "Others"
-            if (settings.filterOthers) {
-                const knownProviders = ['spacex', 'nasa', 'ula', 'blue origin', 'rocket lab', 'esa', 'european', 'isro', 'jaxa', 'cnsa', 'china', 'roscosmos', 'russia'];
-                return !knownProviders.some(known => provider.includes(known));
-            }
-            
-            return false;
-        });
-    }
 
     async refreshLaunches() {
         // Trigger background refresh
@@ -261,6 +300,7 @@ class RocketerPopup {
         Object.entries(elements).forEach(([name, element]) => {
             if (!element) {
                 console.error(`Element not found: ${name}`);
+                this.handleMissingElement(name);
                 return;
             }
         });
@@ -275,7 +315,13 @@ class RocketerPopup {
     showNoLaunches() {
         document.getElementById('loadingSpinner').style.display = 'none';
         document.getElementById('launchesContainer').style.display = 'none';
-        document.getElementById('noLaunches').style.display = 'block';
+        const empty = document.getElementById('noLaunches');
+        empty.style.display = 'block';
+        // Accessibility: announce and focus
+        const statusText = document.getElementById('statusText');
+        if (statusText) statusText.textContent = 'No upcoming launches';
+        empty.setAttribute('aria-live', 'polite');
+        empty.focus();
         document.getElementById('errorState').style.display = 'none';
     }
 
@@ -283,7 +329,13 @@ class RocketerPopup {
         document.getElementById('loadingSpinner').style.display = 'none';
         document.getElementById('launchesContainer').style.display = 'none';
         document.getElementById('noLaunches').style.display = 'none';
-        document.getElementById('errorState').style.display = 'block';
+        const err = document.getElementById('errorState');
+        err.style.display = 'block';
+        // Accessibility: announce and focus
+        const statusText = document.getElementById('statusText');
+        if (statusText) statusText.textContent = 'Error loading launches';
+        err.setAttribute('aria-live', 'assertive');
+        err.focus();
         this.updateStatus('Error loading launches');
     }
 
@@ -337,14 +389,36 @@ class RocketerPopup {
     }
 
     createLaunchCard(launch, template) {
+        if (!template || !template.content) {
+            console.error('createLaunchCard: Invalid template');
+            return null;
+        }
+        
         const card = template.content.cloneNode(true);
         const cardElement = card.querySelector('.launch-card');
         
+        if (!cardElement) {
+            console.error('createLaunchCard: Could not find .launch-card in template');
+            return null;
+        }
+        
+        // Add launch ID for proper data binding
+        cardElement.dataset.launchId = launch.id;
+        
+        // Add accessibility attributes
+        cardElement.setAttribute('role', 'article');
+        cardElement.setAttribute('aria-labelledby', `launch-name-${launch.id}`);
+        cardElement.setAttribute('tabindex', '0');
+        
         // Basic info
-        card.querySelector('.launch-name').textContent = launch.name || 'Unknown Mission';
+        const launchNameElement = card.querySelector('.launch-name');
+        launchNameElement.textContent = launch.name || 'Unknown Mission';
+        launchNameElement.id = `launch-name-${launch.id}`;
         card.querySelector('.launch-provider').textContent = 
             launch.launch_service_provider?.name || 'Unknown Provider';
         
+
+
         // Date and location
         const launchDate = new Date(launch.net);
         card.querySelector('.launch-date').textContent = this.formatDate(launchDate);
@@ -358,7 +432,7 @@ class RocketerPopup {
         missionEl.title = mission; // Tooltip for full text
         
         // Countdown and 24H highlighting
-        this.updateCountdown(card, launch);
+        this.updateCountdown(cardElement, launch);
         
         // Highlight if within 24 hours
         if (launch.minutesUntilLaunch <= 1440) {
@@ -371,10 +445,13 @@ class RocketerPopup {
         }
         
         // Setup buttons with new logic
-        this.setupLaunchButtons(card, launch);
+        // Pass the actual card element, not the fragment
+        this.setupLaunchButtons(cardElement, launch);
         
         return card;
     }
+
+
 
     setupLaunchButtons(card, launch) {
         const playStreamBtn = card.querySelector('.watch-pip');
@@ -396,51 +473,56 @@ class RocketerPopup {
                 // Single stream - direct play
                 playStreamBtn.innerHTML = '<span class="btn-icon">📺</span>Watch Live';
                 playStreamBtn.addEventListener('click', () => {
-                    this.openPictureInPicture(availableStreams[0].url, launch, availableStreams[0]);
+                    chrome.tabs.create({ url: availableStreams[0].url });
                 });
             }
         } else {
-            // No streams available - show search option
+            // No streams available - show webcast status instead
+            const webcastStatus = this.getWebcastStatus(launch);
+            
             playStreamBtn.style.display = 'flex';
-            playStreamBtn.innerHTML = '<span class="btn-icon">🔍</span>Find Stream';
-            playStreamBtn.classList.add('secondary');
-            playStreamBtn.addEventListener('click', () => {
-                this.searchForStreams(launch);
-            });
+            playStreamBtn.innerHTML = webcastStatus.text;
+            playStreamBtn.classList.add('status-indicator');
+            playStreamBtn.title = webcastStatus.title;
+            
+            // Make RocketLaunch.live status clickable to visit launch page
+            if (launch.url && launch.url.includes('rocketlaunch.live')) {
+                playStreamBtn.style.cursor = 'pointer';
+                playStreamBtn.style.pointerEvents = 'auto';
+                playStreamBtn.addEventListener('click', () => {
+                    chrome.tabs.create({ url: launch.url });
+                });
+            } else {
+                playStreamBtn.style.cursor = 'default';
+                playStreamBtn.style.pointerEvents = 'none';
+            }
         }
         
-        // More Info button - always show with validated priority URL
-        moreInfoBtn.addEventListener('click', async () => {
-            // Show loading state
-            const originalText = moreInfoBtn.innerHTML;
-            moreInfoBtn.innerHTML = '<span class="btn-icon">⏳</span>Loading...';
-            moreInfoBtn.disabled = true;
-            
-            try {
-                const infoUrl = await this.getValidatedInfoUrl(launch);
-                chrome.tabs.create({ url: infoUrl });
-            } catch (error) {
-                console.error('Error getting validated URL:', error);
-                // Fallback to space news search
-                const launchName = encodeURIComponent(launch.name || 'rocket launch');
-                chrome.tabs.create({ url: `https://www.spacenews.com/?s=${launchName}` });
-            } finally {
-                // Restore button state
-                moreInfoBtn.innerHTML = originalText;
-                moreInfoBtn.disabled = false;
-            }
+        // More Info button - toggle expanded details
+        moreInfoBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            console.log('More Info clicked, card element:', {
+                card: card,
+                tagName: card?.tagName,
+                classList: card?.classList?.toString()
+            });
+            this.toggleLaunchDetails(card, launch);
         });
     }
 
     getAvailableStreams(launch) {
         const streams = [];
         
-        // Use enhanced streams if available
+        // Use enhanced streams if available (these should be verified live streams)
         if (launch.enhanced_streams && launch.enhanced_streams.length > 0) {
-            return launch.enhanced_streams;
+            // Only return verified live streams
+            const verifiedStreams = launch.enhanced_streams.filter(stream => 
+                stream.verified === true || stream.source === 'api'
+            );
+            return verifiedStreams;
         }
         
-        // Fallback to original vid_urls
+        // Fallback to original vid_urls (these are usually reliable)
         if (launch.vid_urls && launch.vid_urls.length > 0) {
             launch.vid_urls.forEach(vidUrl => {
                 streams.push({
@@ -449,12 +531,52 @@ class RocketerPopup {
                     platform: this.detectPlatform(vidUrl.url),
                     priority: 1,
                     title: 'Official Stream',
-                    description: 'Stream from launch API'
+                    description: 'Stream from launch API',
+                    verified: true
                 });
             });
         }
         
         return streams.sort((a, b) => a.priority - b.priority);
+    }
+
+    getWebcastStatus(launch) {
+        const isLive = launch.webcast_live === true;
+        const launchTime = new Date(launch.net);
+        const now = new Date();
+        const hasStreams = launch.vid_urls && launch.vid_urls.length > 0;
+        const hasRocketLaunchUrl = launch.url && launch.url.includes('rocketlaunch.live');
+        
+        if (isLive) {
+            return {
+                text: '<span class="status-icon live">🔴</span>Webcast Live',
+                title: 'Official webcast is currently live'
+            };
+        } else if (hasStreams) {
+            const minutesUntilLaunch = Math.floor((launchTime - now) / (1000 * 60));
+            if (minutesUntilLaunch > 0) {
+                return {
+                    text: '<span class="status-icon scheduled">📺</span>Webcast Scheduled',
+                    title: 'Official webcast will be available for this launch'
+                };
+            } else {
+                return {
+                    text: '<span class="status-icon recording">📼</span>Webcast Available',
+                    title: 'Official webcast recording should be available'
+                };
+            }
+        } else if (hasRocketLaunchUrl) {
+            // For RocketLaunch.live data, show generic status since webcast info isn't available
+            return {
+                text: '<span class="status-icon unknown">📡</span>Check Launch Page',
+                title: 'Visit launch page for webcast information'
+            };
+        } else {
+            return {
+                text: '<span class="status-icon none">❌</span>No Webcast',
+                title: 'No official webcast announced for this launch'
+            };
+        }
     }
 
     detectPlatform(url) {
@@ -510,7 +632,7 @@ class RocketerPopup {
         menu.querySelectorAll('.stream-option').forEach((option, index) => {
             option.addEventListener('click', () => {
                 const selectedStream = streams[index];
-                this.openPictureInPicture(selectedStream.url, launch, selectedStream);
+                chrome.tabs.create({ url: selectedStream.url });
                 menu.remove();
             });
         });
@@ -554,23 +676,7 @@ class RocketerPopup {
         return names[platform] || 'Unknown';
     }
 
-    searchForStreams(launch) {
-        const provider = launch.launch_service_provider?.name || '';
-        const missionName = launch.name || '';
-        
-        // Open multiple search tabs for different platforms
-        const searchQueries = [
-            `https://www.youtube.com/results?search_query=${encodeURIComponent(missionName + ' live stream')}&sp=EgJAAQ%253D%253D`,
-            `https://www.twitch.tv/search?term=${encodeURIComponent(missionName + ' launch')}`,
-            `https://www.google.com/search?q=${encodeURIComponent(missionName + ' live stream launch')}`
-        ];
 
-        // Open first search tab
-        chrome.tabs.create({ url: searchQueries[0] });
-        
-        // Show notification about manual search
-        this.showNotification('🔍 Stream Search', `Opened search for ${missionName} live streams. Check YouTube, Twitch, and official channels.`);
-    }
 
     showNotification(title, message) {
         // Create a temporary notification element
@@ -598,92 +704,50 @@ class RocketerPopup {
         return streams.length > 0 ? streams[0].url : null;
     }
 
-    async openPictureInPicture(streamUrl, launch, streamInfo = null) {
-        try {
-            // Create a new tab with our PiP player
-            const tab = await chrome.tabs.create({
-                url: chrome.runtime.getURL('pip.html'),
-                active: false
-            });
-            
-            // Send stream data to the PiP page
-            setTimeout(() => {
-                chrome.tabs.sendMessage(tab.id, {
-                    action: 'initPiP',
-                    streamUrl: streamUrl,
-                    launchName: launch.name,
-                    streamInfo: streamInfo
-                });
-            }, 500);
-            
-        } catch (error) {
-            console.error('Error opening PiP:', error);
-            // Fallback to regular tab
-            chrome.tabs.create({ url: streamUrl });
+
+
+    getBestInfoUrl(launch) {
+        const provider = launch.launch_service_provider?.name?.toLowerCase() || '';
+        const missionName = launch.name || '';
+        
+        // Priority: Real official pages > Wikipedia > Space news search
+        
+        // SpaceX missions
+        if (provider.includes('spacex')) {
+            return 'https://www.spacex.com/launches/';
         }
+        
+        // NASA missions  
+        if (provider.includes('nasa')) {
+            return 'https://www.nasa.gov/launchschedule/';
+        }
+        
+        // ULA missions
+        if (provider.includes('ula')) {
+            return 'https://www.ulalaunch.com/missions/upcoming-launches';
+        }
+        
+        // Blue Origin
+        if (provider.includes('blue origin')) {
+            return 'https://www.blueorigin.com/news/';
+        }
+        
+        // Rocket Lab
+        if (provider.includes('rocket lab')) {
+            return 'https://www.rocketlabusa.com/missions/upcoming/';
+        }
+        
+        // For other providers, try Wikipedia first
+        const wikipediaUrl = this.getWikipediaLaunchUrl(launch);
+        if (wikipediaUrl) {
+            return wikipediaUrl;
+        }
+        
+        // Final fallback: SpaceNews search
+        const searchTerm = encodeURIComponent(`${missionName} ${provider} launch`);
+        return `https://www.spacenews.com/?s=${searchTerm}`;
     }
 
-    async getValidatedInfoUrl(launch) {
-        // Priority order with validation: Official > API > Wikipedia > Space news
-        console.log('🔗 Validating URLs for launch:', launch.name);
-        
-        const urlsToTry = [
-            { type: 'official', url: this.getOfficialLaunchUrl(launch) },
-            { type: 'api', url: launch.url },
-            { type: 'wikipedia', url: this.getWikipediaLaunchUrl(launch) }
-        ];
-        
-        // Filter out null/undefined URLs
-        const validUrls = urlsToTry.filter(item => item.url);
-        
-        // Test each URL in priority order
-        for (const { type, url } of validUrls) {
-            console.log(`🧪 Testing ${type} URL:`, url);
-            
-            const isValid = await this.validateUrl(url);
-            if (isValid) {
-                console.log(`✅ ${type} URL validated successfully:`, url);
-                return url;
-            } else {
-                console.log(`❌ ${type} URL failed validation:`, url);
-            }
-        }
-        
-        // Final fallback to space news search (always works)
-        const launchName = encodeURIComponent(launch.name || 'rocket launch');
-        const fallbackUrl = `https://www.spacenews.com/?s=${launchName}`;
-        console.log('🔄 Using fallback URL:', fallbackUrl);
-        return fallbackUrl;
-    }
-
-    async validateUrl(url) {
-        try {
-            // Use a lightweight HEAD request to check if URL exists
-            const response = await fetch(url, {
-                method: 'HEAD',
-                mode: 'no-cors', // Handle CORS issues
-                cache: 'no-cache',
-                signal: AbortSignal.timeout(5000) // 5 second timeout
-            });
-            
-            // In no-cors mode, we can't read the status, but if it doesn't throw, it likely exists
-            return true;
-        } catch (error) {
-            // If HEAD fails, try GET with a short timeout
-            try {
-                const response = await fetch(url, {
-                    method: 'GET',
-                    mode: 'no-cors',
-                    cache: 'no-cache',
-                    signal: AbortSignal.timeout(3000) // 3 second timeout for GET
-                });
-                return true;
-            } catch (getError) {
-                console.log(`URL validation failed for ${url}:`, getError.message);
-                return false;
-            }
-        }
-    }
 
     getWikipediaLaunchUrl(launch) {
         try {
@@ -709,54 +773,6 @@ class RocketerPopup {
         }
     }
 
-    getOfficialLaunchUrl(launch) {
-        const provider = launch.launch_service_provider?.name?.toLowerCase() || '';
-        const missionName = launch.name || '';
-        
-        // SpaceX official pages
-        if (provider.includes('spacex')) {
-            // Try to construct SpaceX mission URL
-            const slug = missionName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
-            return `https://www.spacex.com/launches/${slug}`;
-        }
-        
-        // NASA official pages
-        if (provider.includes('nasa')) {
-            return 'https://www.nasa.gov/launchschedule/';
-        }
-        
-        // ULA official pages
-        if (provider.includes('ula')) {
-            return 'https://www.ulalaunch.com/missions/upcoming-launches';
-        }
-        
-        // Blue Origin
-        if (provider.includes('blue origin')) {
-            return 'https://www.blueorigin.com/news/';
-        }
-        
-        // Rocket Lab
-        if (provider.includes('rocket lab')) {
-            return 'https://www.rocketlabusa.com/missions/upcoming/';
-        }
-        
-        // ESA
-        if (provider.includes('esa') || provider.includes('european')) {
-            return 'https://www.esa.int/Enabling_Support/Space_Transportation/Launch_vehicles';
-        }
-        
-        // ISRO
-        if (provider.includes('isro')) {
-            return 'https://www.isro.gov.in/';
-        }
-        
-        // JAXA
-        if (provider.includes('jaxa')) {
-            return 'https://global.jaxa.jp/projects/rockets/';
-        }
-        
-        return null; // No official URL found
-    }
 
     updateCountdown(card, launch) {
         const countdownEl = card.querySelector('.countdown-time');
@@ -811,12 +827,16 @@ class RocketerPopup {
     }
 
     startCountdownUpdates() {
-        // Update countdowns every second
+        // Update countdowns every second with proper data binding
         this.countdownInterval = setInterval(() => {
             const cards = document.querySelectorAll('.launch-card');
-            cards.forEach((card, index) => {
-                if (this.launches[index]) {
-                    this.updateCountdown(card, this.launches[index]);
+            cards.forEach((card) => {
+                const launchId = card.dataset.launchId;
+                if (launchId) {
+                    const launch = this.launches.find(l => l.id === launchId);
+                    if (launch) {
+                        this.updateCountdown(card, launch);
+                    }
                 }
             });
         }, 1000);
@@ -830,7 +850,22 @@ class RocketerPopup {
         if (lastUpdate) {
             const updateTime = new Date(lastUpdate);
             const timeAgo = this.getTimeAgo(updateTime);
-            document.getElementById('lastUpdate').textContent = `Updated ${timeAgo}`;
+            
+            // Check if any launches are in auto-refresh mode
+            const now = new Date();
+            const autoRefreshActive = this.launches.some(launch => {
+                const minutesUntil = Math.floor((new Date(launch.net) - now) / (1000 * 60));
+                const hasStreams = (launch.enhanced_streams && launch.enhanced_streams.length > 0) ||
+                                 (launch.vid_urls && launch.vid_urls.length > 0);
+                return minutesUntil >= 0 && minutesUntil <= 10 && !hasStreams;
+            });
+            
+            let updateText = `Updated ${timeAgo}`;
+            if (autoRefreshActive) {
+                updateText += ' • Auto-refreshing streams';
+            }
+            
+            document.getElementById('lastUpdate').textContent = updateText;
         }
     }
 
@@ -849,22 +884,11 @@ class RocketerPopup {
         return `${diffDays}d ago`;
     }
 
+
+
     showAbout() {
-        const aboutText = `
-Rocketer v1.0.0
-
-A Chrome extension for tracking upcoming rocket launches.
-
-Features:
-• Real-time launch notifications
-• Live stream access
-• Picture-in-picture viewing
-• Countdown timers
-
-Data provided by The Space Devs API
-        `.trim();
-        
-        alert(aboutText);
+        // Open GitHub developer page in a new tab
+        chrome.tabs.create({ url: 'https://github.com/NSR2X' });
     }
 
     // Cleanup when popup closes
@@ -874,6 +898,17 @@ Data provided by The Space Devs API
         }
     }
 
+    setupAutoRefreshListener() {
+        // Listen for streams found during auto-refresh
+        chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+            if (message.action === 'streamsFound') {
+                console.log('🎉 Streams found via auto-refresh, reloading popup data');
+                this.loadLaunches(); // Refresh the popup display
+                this.showNotification('🎉 Live Stream Found!', 'New live streams detected. Refreshing launch data.');
+            }
+        });
+    }
+    
     // Legacy method for backward compatibility (now calls async version)
     getInfoUrl(launch) {
         // This method is now deprecated in favor of getValidatedInfoUrl
@@ -891,6 +926,194 @@ Data provided by The Space Devs API
         const launchName = encodeURIComponent(launch.name || 'rocket launch');
         return `https://www.spacenews.com/?s=${launchName}`;
     }
+
+    toggleLaunchDetails(card, launch) {
+        if (!card) {
+            console.error('toggleLaunchDetails: card is null');
+            return;
+        }
+        
+        const expandedSection = card.querySelector('.launch-details-expanded');
+        const moreInfoBtn = card.querySelector('.more-info');
+        
+        if (!expandedSection || !moreInfoBtn) {
+            console.error('toggleLaunchDetails: Required elements not found', {
+                card: card,
+                cardTagName: card?.tagName,
+                cardClassList: card?.classList?.toString(),
+                expandedSection: !!expandedSection,
+                moreInfoBtn: !!moreInfoBtn,
+                cardHTML: card?.outerHTML?.substring(0, 200)
+            });
+            return;
+        }
+        
+        const expandIndicator = moreInfoBtn.querySelector('.expand-indicator');
+        const moreInfoText = moreInfoBtn.querySelector('.more-info-text');
+        
+        if (!expandIndicator || !moreInfoText) {
+            console.error('toggleLaunchDetails: Button elements not found', {
+                expandIndicator: !!expandIndicator,
+                moreInfoText: !!moreInfoText
+            });
+            return;
+        }
+        
+        if (expandedSection.style.display === 'none' || !expandedSection.style.display) {
+            // Expand - show details
+            expandedSection.style.display = 'block';
+            moreInfoBtn.classList.add('expanded');
+            moreInfoText.textContent = 'Less Info';
+            expandIndicator.textContent = '▲';
+            
+            // Populate the details if not already done
+            if (!expandedSection.hasAttribute('data-populated')) {
+                this.populateLaunchDetails(card, launch);
+                expandedSection.setAttribute('data-populated', 'true');
+            }
+        } else {
+            // Collapse - hide details
+            expandedSection.style.display = 'none';
+            moreInfoBtn.classList.remove('expanded');
+            moreInfoText.textContent = 'More Info';
+            expandIndicator.textContent = '▼';
+        }
+    }
+
+    populateLaunchDetails(card, launch) {
+        if (!card) {
+            console.error('populateLaunchDetails: card is null');
+            return;
+        }
+        
+        const expandedContent = card.querySelector('.expanded-content');
+        if (!expandedContent) {
+            console.error('populateLaunchDetails: expanded-content not found');
+            return;
+        }
+        
+        // Show loading state
+        expandedContent.classList.add('loading');
+        expandedContent.innerHTML = 'Loading detailed information...';
+        
+        // Simulate brief loading delay for better UX
+        setTimeout(() => {
+            if (!expandedContent) return; // Double-check in case card was removed
+            
+            expandedContent.classList.remove('loading');
+            
+            // Restore the expanded content structure first
+            this.restoreExpandedContentStructure(card);
+            
+            // Populate all the detail fields
+            this.setDetailValue(card, '.rocket-name', launch.rocket?.configuration?.full_name || launch.rocket?.name || 'Unknown');
+            this.setDetailValue(card, '.launch-pad', this.getLaunchPadInfo(launch));
+            this.setDetailValue(card, '.launch-status', launch.status?.name || 'Unknown');
+            this.setDetailValue(card, '.launch-window', this.getLaunchWindow(launch));
+            
+            // Mission details
+            this.setDetailValue(card, '.mission-type', launch.mission?.type || 'Unknown');
+            this.setDetailValue(card, '.mission-orbit', launch.mission?.orbit?.name || 'Unknown');
+
+            
+
+        }, 300);
+    }
+
+    setDetailValue(card, selector, value) {
+        if (!card) {
+            console.error('setDetailValue: card is null');
+            return;
+        }
+        
+        const element = card.querySelector(selector);
+        if (element) {
+            element.textContent = value || 'Not available';
+            if (!value) {
+                element.classList.add('empty-value');
+            }
+        } else {
+            console.warn(`setDetailValue: Element not found for selector: ${selector}`);
+        }
+    }
+
+    getLaunchPadInfo(launch) {
+        if (launch.pad) {
+            const padName = launch.pad.name || '';
+            const locationName = launch.pad.location?.name || '';
+            return padName + (locationName ? ` (${locationName})` : '');
+        }
+        return 'Unknown';
+    }
+
+    getLaunchWindow(launch) {
+        if (launch.window_start && launch.window_end) {
+            const start = new Date(launch.window_start);
+            const end = new Date(launch.window_end);
+            const duration = Math.round((end - start) / (1000 * 60)); // minutes
+            
+            if (duration > 0) {
+                return `${duration} minute${duration !== 1 ? 's' : ''} window`;
+            }
+        }
+        return 'Instantaneous';
+    }
+
+    restoreExpandedContentStructure(card) {
+        if (!card) {
+            console.error('restoreExpandedContentStructure: card is null');
+            return;
+        }
+        
+        const expandedContent = card.querySelector('.expanded-content');
+        if (!expandedContent) {
+            console.error('restoreExpandedContentStructure: expanded-content not found');
+            return;
+        }
+        
+        if (!expandedContent.querySelector('.detail-section')) {
+            // If the structure was lost during loading, restore it from the template
+            const template = document.getElementById('launchCardTemplate');
+            if (template && template.content) {
+                const templateExpanded = template.content.querySelector('.expanded-content');
+                if (templateExpanded) {
+                    expandedContent.innerHTML = templateExpanded.innerHTML;
+                } else {
+                    console.error('restoreExpandedContentStructure: template expanded-content not found');
+                }
+            } else {
+                console.error('restoreExpandedContentStructure: template not found');
+            }
+        }
+    }
+
+    handleKeyboardNavigation(e) {
+        // Handle Escape key to close popups or reset focus
+        if (e.key === 'Escape') {
+            const streamMenu = document.querySelector('.stream-menu');
+            if (streamMenu) {
+                streamMenu.remove();
+                return;
+            }
+            
+            // Also collapse any expanded details
+            const expandedCards = document.querySelectorAll('.launch-card .more-info.expanded');
+            expandedCards.forEach(btn => {
+                if (btn && typeof btn.click === 'function') {
+                    btn.click();
+                }
+            });
+        }
+        
+        // Handle Enter and Space for better accessibility
+        if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('launch-card')) {
+            e.preventDefault();
+            const moreInfoBtn = e.target.querySelector('.more-info');
+            if (moreInfoBtn) {
+                moreInfoBtn.click();
+            }
+        }
+    }
 }
 
 // Initialize popup when DOM is loaded
@@ -903,10 +1126,4 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// Handle messages from background script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'launchesUpdated') {
-        // Reload launches when background script updates them
-        window.location.reload();
-    }
-}); 
+ 

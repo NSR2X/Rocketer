@@ -1,3 +1,11 @@
+<!--
+    Rocketer - Space Launch Tracker
+    Main popup interface
+    
+    @author Quantin BODIN
+    @version 1.3.0
+    @description Chrome extension popup for displaying rocket launches
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,15 +18,15 @@
     <div class="container">
         <header class="header">
             <div class="logo">
-                <span class="rocket-icon">🚀</span>
+                <span class="rocket-icon" aria-hidden="true">🚀</span>
                 <h1>Rocketer</h1>
             </div>
-            <button class="refresh-btn" id="refreshBtn" title="Refresh launches">
-                <span class="refresh-icon">🔄</span>
+            <button class="refresh-btn" id="refreshBtn" title="Refresh launches" aria-label="Refresh launch data">
+                <span class="refresh-icon" aria-hidden="true">🔄</span>
             </button>
         </header>
 
-        <div class="status-bar">
+        <div class="status-bar" role="status" aria-live="polite">
             <span id="statusText">Loading...</span>
             <span id="lastUpdate" class="last-update"></span>
         </div>
@@ -29,21 +37,21 @@
                 <p>Loading upcoming launches...</p>
             </div>
 
-            <div id="launchesContainer" class="launches-container" style="display: none;">
+            <div id="launchesContainer" class="launches-container" style="display: none;" aria-busy="false">
                 <!-- Launches will be populated here -->
             </div>
 
-            <div id="noLaunches" class="no-launches" style="display: none;">
+            <div id="noLaunches" class="no-launches" style="display: none;" role="status" tabindex="-1">
                 <div class="empty-state">
-                    <span class="empty-icon">🌌</span>
+                    <span class="empty-icon" aria-hidden="true">🌌</span>
                     <h3>No Upcoming Launches</h3>
-                    <p>No rocket launches scheduled for the next 24 hours.</p>
+                    <p>No rocket launches scheduled for the next two weeks.</p>
                     <button id="checkAgainBtn" class="btn-secondary">Check Again</button>
                 </div>
             </div>
 
-            <div id="errorState" class="error-state" style="display: none;">
-                <span class="error-icon">⚠️</span>
+            <div id="errorState" class="error-state" style="display: none;" role="alert" tabindex="-1">
+                <span class="error-icon" aria-hidden="true">⚠️</span>
                 <h3>Unable to Load Launches</h3>
                 <p>Please check your internet connection and try again.</p>
                 <button id="retryBtn" class="btn-secondary">Retry</button>
@@ -51,8 +59,9 @@
         </div>
 
         <footer class="footer">
-            <button id="settingsBtn" class="btn-text">Settings</button>
-            <button id="aboutBtn" class="btn-text">About</button>
+            <button id="settingsBtn" class="btn-text" aria-label="Open settings page">Settings</button>
+            <button id="aboutBtn" class="btn-text" aria-label="About Rocketer">About</button>
+            <button id="privacyBtn" class="btn-text" aria-label="Open privacy policy">Privacy</button>
         </footer>
     </div>
 
@@ -65,8 +74,8 @@
                     <p class="launch-provider"></p>
                 </div>
                 <div class="launch-countdown">
-                    <span class="countdown-time"></span>
-                    <span class="countdown-label">until launch</span>
+                    <div class="countdown-time"></div>
+                    <div class="countdown-label">until launch</div>
                 </div>
             </div>
             
@@ -85,14 +94,55 @@
                 </div>
             </div>
 
-            <div class="launch-actions">
-                <button class="btn-secondary watch-pip" style="display: none;">
-                    <span class="btn-icon">▶️</span>
+            <!-- Expandable detailed information section -->
+            <div class="launch-details-expanded" style="display: none;">
+                <div class="expanded-content">
+                    <div class="detail-section">
+                        <h4 class="section-title">🚀 Launch Details</h4>
+                        <div class="detail-item">
+                            <span class="detail-label">Rocket:</span>
+                            <span class="detail-value rocket-name"></span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Launch Pad:</span>
+                            <span class="detail-value launch-pad"></span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Status:</span>
+                            <span class="detail-value launch-status"></span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Window:</span>
+                            <span class="detail-value launch-window"></span>
+                        </div>
+                    </div>
+                    
+                    <div class="detail-section">
+                        <h4 class="section-title">🎯 Mission Details</h4>
+                        <div class="detail-item">
+                            <span class="detail-label">Mission Type:</span>
+                            <span class="detail-value mission-type"></span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Orbit:</span>
+                            <span class="detail-value mission-orbit"></span>
+                        </div>
+
+                    </div>
+                    
+
+                </div>
+            </div>
+
+            <div class="launch-actions" role="group" aria-label="Launch actions">
+                <button class="btn-secondary watch-pip" style="display: none;" aria-label="Open webcast in new tab">
+                    <span class="btn-icon" aria-hidden="true">▶️</span>
                     Play Stream
                 </button>
-                <button class="btn-secondary more-info">
-                    <span class="btn-icon">ℹ️</span>
-                    More Info
+                <button class="btn-secondary more-info" aria-label="Toggle detailed mission information">
+                    <span class="btn-icon" aria-hidden="true">ℹ️</span>
+                    <span class="more-info-text">More Info</span>
+                    <span class="expand-indicator" aria-hidden="true">▼</span>
                 </button>
             </div>
         </div>

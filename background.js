@@ -1,41 +1,32 @@
-// Background service worker for Rocketer extension
-const LAUNCH_API_URL = 'https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit=50&offset=0';
-const CHECK_INTERVAL = 30; // minutes
-const NOTIFICATION_ADVANCE = 60; // minutes before launch
+/** Rocketer background service worker */
 
-// Enhanced stream discovery configuration
-const STREAM_SOURCES = {
-  youtube: {
-    apiKey: null, // Will use search without API key for now
-    channels: {
-      spacex: 'UCtI0Hodo5o5dUb67FeUjDeA', // Official SpaceX channel
-      nasa: 'UCLA_DiR1FfKNvjuUpBHmylQ', // Official NASA channel
-      blueorigin: 'UCVTomc35agH1SM6kCKzwW_g', // Blue Origin
-      ula: 'UCVTomc35agH1SM6kCKzwW_g', // ULA
-      rocketlab: 'UCVTomc35agH1SM6kCKzwW_g', // Rocket Lab USA
-      esa: 'UCIBaDdAbGlFDeS33shmlD0A', // European Space Agency
-      isro: 'UCVTomc35agH1SM6kCKzwW_g', // ISRO
-      jaxa: 'UCVTomc35agH1SM6kCKzwW_g' // JAXA
-    }
-  },
-  twitch: {
-    channels: ['spacex', 'nasa', 'spaceflightnow', 'everyday_astronaut']
-  },
-  official: {
-    spacex: 'https://www.spacex.com/launches/',
-    nasa: 'https://www.nasa.gov/live',
-    blueorigin: 'https://www.blueorigin.com/news/',
-    ula: 'https://www.ulalaunch.com/missions/upcoming-launches',
-    rocketlab: 'https://www.rocketlabusa.com/missions/upcoming/',
-    esa: 'https://www.esa.int/ESA_Multimedia/ESA_Web_TV',
-    isro: 'https://www.isro.gov.in/',
-    jaxa: 'https://global.jaxa.jp/projects/rockets/'
-  }
+// Background service worker for Rocketer extension
+const API_URLS = {
+  spacedevs: 'https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit=50&offset=0',
+  rocketlaunch: 'https://fdo.rocketlaunch.live/json/launches/next/50'
 };
+const SPACEDEVS_CALENDAR_URL = 'https://ll.thespacedevs.com/launches/latest/feed.ics';
+const CHECK_INTERVAL = 30; // minutes
+// Notification timing will be retrieved from user settings
+
+// Stream source metadata removed (no in-extension player)
 
 class LaunchTracker {
   constructor() {
+    this.streamRefreshIntervals = new Map();
+    this.lastStreamCheck = new Map();
+    this.cleanupIntervals();
     this.init();
+  }
+
+  // Clean up intervals to prevent memory leaks
+  cleanupIntervals() {
+    if (this.streamRefreshIntervals) {
+      for (const [launchId, interval] of this.streamRefreshIntervals) {
+        clearInterval(interval);
+      }
+      this.streamRefreshIntervals.clear();
+    }
   }
 
   async init() {
@@ -50,10 +41,8 @@ class LaunchTracker {
   }
 
   async setupPeriodicCheck(interval = CHECK_INTERVAL) {
-    // Clear existing alarms
     await chrome.alarms.clearAll();
     
-    // Create periodic alarm
     await chrome.alarms.create('checkLaunches', {
       delayInMinutes: interval,
       periodInMinutes: interval
@@ -73,19 +62,27 @@ class LaunchTracker {
 
   async fetchLaunches() {
     try {
-      console.log('Fetching launches from primary API...');
-      const response = await fetch(LAUNCH_API_URL);
+      // Get user's preferred data provider
+      const settings = await chrome.storage.sync.get(['dataProvider']);
+      const provider = settings.dataProvider || 'spacedevs';
+      const apiUrl = API_URLS[provider];
+      
+      
+      const response = await fetch(apiUrl);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
       const data = await response.json();
-      console.log('✅ Primary API successful');
       
-      // Enhance launches with stream discovery
-      const enhancedLaunches = await this.enhanceLaunchesWithStreams(data.results || []);
-      return enhancedLaunches;
+      
+      // Transform data based on provider
+      const launches = provider === 'rocketlaunch' 
+        ? this.transformRocketLaunchData(data.result || [])
+        : data.results || [];
+      
+      return launches;
     } catch (error) {
       console.error('❌ Primary API failed:', error);
       console.log('🔄 Attempting Wikipedia backup...');
@@ -93,226 +90,370 @@ class LaunchTracker {
     }
   }
 
-  async enhanceLaunchesWithStreams(launches) {
-    console.log('🎥 Enhancing launches with stream discovery...');
-    
-    const enhancedLaunches = await Promise.all(launches.map(async (launch) => {
-      const streams = await this.findLiveStreams(launch);
-      return {
-        ...launch,
-        vid_urls: streams.length > 0 ? streams : launch.vid_urls || [],
-        enhanced_streams: streams
-      };
+  transformRocketLaunchData(rocketLaunchData) {
+    return rocketLaunchData.map(launch => ({
+      id: launch.id,
+      name: launch.name,
+      net: launch.t0 || launch.win_open, // Use t0 (exact time) or win_open as fallback
+      window_start: launch.win_open,
+      window_end: launch.win_close,
+      status: {
+        name: launch.result === -1 ? 'Go' : (launch.result === 1 ? 'Success' : 'TBD')
+      },
+      launch_service_provider: {
+        name: launch.provider?.name || 'Unknown',
+        type: 'Commercial' // Default type since RocketLaunch.live doesn't provide this
+      },
+      rocket: {
+        name: launch.vehicle?.name || 'Unknown',
+        configuration: {
+          full_name: launch.vehicle?.name || 'Unknown'
+        }
+      },
+      pad: {
+        name: launch.pad?.name || 'Unknown',
+        location: {
+          name: launch.pad?.location?.name || 'Unknown'
+        }
+      },
+      mission: {
+        name: launch.missions?.[0]?.name || launch.name,
+        description: launch.mission_description || launch.missions?.[0]?.description || 'No description available',
+        type: 'Unknown'
+      },
+      image: null, // RocketLaunch.live doesn't provide images
+      url: `https://rocketlaunch.live/launch/${launch.slug}`,
+      vid_urls: [], // RocketLaunch.live doesn't provide stream URLs in this format
+      webcast_live: false, // RocketLaunch.live doesn't provide this field
+      tags: launch.tags || []
     }));
-
-    console.log(`✅ Enhanced ${enhancedLaunches.length} launches with stream data`);
-    return enhancedLaunches;
   }
 
+  async fetchSpaceDevsVideoUrls() {
+    try {
+      console.log('Fetching SpaceDevs calendar for video URLs...');
+      const response = await fetch(SPACEDEVS_CALENDAR_URL);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const icsData = await response.text();
+      const videoUrls = this.parseICSVideoUrls(icsData);
+      console.log('📺 Parsed video URLs:', videoUrls);
+      return videoUrls;
+    } catch (error) {
+      console.error('Failed to fetch SpaceDevs calendar:', error);
+      return {};
+    }
+  }
+
+  parseICSVideoUrls(icsData) {
+    const videoUrls = {};
+    const events = icsData.split('BEGIN:VEVENT');
+    
+    console.log(`🔍 Processing ${events.length} ICS events`);
+    
+    events.forEach((event, index) => {
+      if (!event.includes('SUMMARY:')) return;
+      
+      // Extract launch name
+      const summaryMatch = event.match(/SUMMARY:(.+?)(?:\n|\r)/);
+      if (!summaryMatch) return;
+      
+      const launchName = summaryMatch[1].trim();
+      
+      // Extract UID for matching
+      const uidMatch = event.match(/UID:(.+?)(?:\n|\r)/);
+      if (!uidMatch) return;
+      
+      const uid = uidMatch[1].replace('@thespacedevs', '').trim();
+      
+      // Look for VIDEO URLS section in description
+      const descriptionMatch = event.match(/DESCRIPTION:(.*?)(?:\nGEO:|\nLAST-MODIFIED:)/s);
+      if (!descriptionMatch) {
+        if (launchName.includes('Kuiper')) {
+          console.log(`⚠️ No DESCRIPTION found for ${launchName}`);
+        }
+        return;
+      }
+      
+      const description = descriptionMatch[1].replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+      
+      // Find VIDEO URLS section
+      const videoUrlsMatch = description.match(/VIDEO URLS\n(.*?)(?:\n\n|$)/s);
+      if (!videoUrlsMatch) {
+        if (launchName.includes('Kuiper')) {
+          console.log(`⚠️ No VIDEO URLS section found for ${launchName}`);
+          console.log('Description:', description.substring(0, 200) + '...');
+        }
+        return;
+      }
+      
+      const videoSection = videoUrlsMatch[1];
+      
+      if (launchName.includes('Kuiper')) {
+        console.log(`🎬 Video section for ${launchName}:`, videoSection);
+      }
+      
+      // Look for Official webcast URLs - handle ICS line folding where "Webcast" gets split
+      // The ICS format breaks long lines, so "• Official Webcast" becomes "• Official W" + "ebcast"  
+      const officialPattern = /• Official W[^\n]*?(?:\n\s*[^\n]*?cast[^\n]*?)*?\n\s*(https?:\/\/[^\s\\]+)/g;
+      let match;
+      const officialUrls = [];
+      
+      while ((match = officialPattern.exec(videoSection)) !== null) {
+        let cleanUrl = match[1];
+        // Clean up any trailing backslashes from ICS encoding
+        cleanUrl = cleanUrl.replace(/\\+$/, '');
+        
+        officialUrls.push({
+          url: cleanUrl,
+          title: 'Official Webcast',
+          verified: true,
+          priority: 1
+        });
+        
+        if (launchName.includes('Kuiper')) {
+          console.log(`✅ Found official URL for ${launchName}: ${cleanUrl}`);
+        }
+      }
+      
+      if (officialUrls.length > 0) {
+        videoUrls[uid] = officialUrls;
+        videoUrls[launchName] = officialUrls; // Also index by name for fallback
+        console.log(`📺 Added ${officialUrls.length} video(s) for ${launchName} (UID: ${uid})`);
+      }
+    });
+    
+    return videoUrls;
+  }
+
+  enhanceLaunchWithVideoUrls(launch, spaceDevsVideoUrls) {
+    console.log(`🔍 Trying to enhance launch: ${launch.name} (ID: ${launch.id})`);
+    console.log(`🔍 Available video URL keys:`, Object.keys(spaceDevsVideoUrls));
+    
+    // Try to match by UID (most reliable)
+    const launchId = launch.id;
+    let videoUrls = spaceDevsVideoUrls[launchId];
+    console.log(`🔍 Match by ID "${launchId}":`, videoUrls ? 'FOUND' : 'NOT FOUND');
+    
+    // Fallback: try to match by launch name
+    if (!videoUrls) {
+      videoUrls = spaceDevsVideoUrls[launch.name];
+      console.log(`🔍 Match by name "${launch.name}":`, videoUrls ? 'FOUND' : 'NOT FOUND');
+    }
+    
+    // Fallback: try partial name matching
+    if (!videoUrls) {
+      const launchNameLower = launch.name.toLowerCase();
+      console.log(`🔍 Trying partial match for: "${launchNameLower}"`);
+      for (const [key, urls] of Object.entries(spaceDevsVideoUrls)) {
+        const keyLower = key.toLowerCase();
+        const searchTerm = launchNameLower.split('|')[0].trim().toLowerCase();
+        console.log(`🔍 Checking if "${keyLower}" includes "${searchTerm}"`);
+        if (keyLower.includes(searchTerm)) {
+          videoUrls = urls;
+          console.log(`✅ Partial match found: "${key}"`);
+          break;
+        }
+      }
+    }
+    
+    if (videoUrls && videoUrls.length > 0) {
+      // Convert to vid_urls format for compatibility
+      const formattedUrls = videoUrls.map(video => ({
+        url: video.url,
+        title: video.title
+      }));
+      
+      // Merge with existing vid_urls, prioritizing calendar URLs
+      const existingUrls = launch.vid_urls || [];
+      launch.vid_urls = [...formattedUrls, ...existingUrls];
+      
+      // Also add as enhanced_streams for immediate use
+      launch.enhanced_streams = videoUrls;
+      
+      console.log(`✅ Enhanced ${launch.name} with ${videoUrls.length} official video URL(s):`, videoUrls);
+    } else {
+      console.log(`❌ No video URLs found for ${launch.name}`);
+    }
+  }
+
+  shouldCheckStreamsForLaunch(launch, minutesUntilLaunch, forceRefresh) {
+    // Always check if forced (manual refresh button)
+    if (forceRefresh) {
+      return true;
+    }
+    
+    // Don't check streams if launch is more than 60 minutes away (align with stream search window)
+    if (minutesUntilLaunch > 60) {
+      return false;
+    }
+    
+    // Don't check streams if launch has already happened
+    if (minutesUntilLaunch < -60) { // Give 1 hour grace period after launch
+      return false;
+    }
+    
+    // Check how long ago we last checked streams for this launch
+    const lastCheck = this.lastStreamCheck.get(launch.id);
+    if (lastCheck) {
+      const minutesSinceLastCheck = (Date.now() - lastCheck) / (1000 * 60);
+      
+      // If we found streams recently, don't check again for 5 minutes
+      // If no streams found, check more frequently (every 2 minutes)
+      const checkInterval = this.hasStreamsForLaunch(launch.id) ? 5 : 2;
+      
+      if (minutesSinceLastCheck < checkInterval) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+  
+  async getExistingLaunchData(launchId) {
+    try {
+      const { upcomingLaunches = [] } = await chrome.storage.local.get('upcomingLaunches');
+      return upcomingLaunches.find(launch => launch.id === launchId);
+    } catch (error) {
+      return null;
+    }
+  }
+  
+  hasStreamsForLaunch(launchId) {
+    // This would need to check stored data - simplified for now
+    return false;
+  }
+
+  // Stream discovery temporarily disabled - preserve API-provided vid_urls only
   async findLiveStreams(launch) {
     const streams = [];
-    const provider = launch.launch_service_provider?.name?.toLowerCase() || '';
-    const missionName = launch.name || '';
-    const launchDate = new Date(launch.net);
-    const now = new Date();
-    const hoursUntilLaunch = (launchDate - now) / (1000 * 60 * 60);
-
-    // Only search for streams if launch is within 48 hours
-    if (hoursUntilLaunch > 48 || hoursUntilLaunch < -6) {
-      return streams;
-    }
-
-    console.log(`🔍 Searching for streams for: ${missionName} (${provider})`);
-
     try {
-      // 1. Check existing API streams first
       if (launch.vid_urls && launch.vid_urls.length > 0) {
-        launch.vid_urls.forEach(vidUrl => {
+        launch.vid_urls.forEach((vidUrl) => {
           streams.push({
             url: vidUrl.url,
             source: 'api',
             platform: this.detectPlatform(vidUrl.url),
-            priority: 1
+            priority: 1,
+            title: 'Official Stream',
+            description: 'Stream from launch API',
+            verified: true
           });
         });
       }
-
-      // 2. Search YouTube for live streams
-      const youtubeStreams = await this.searchYouTubeLiveStreams(launch);
-      streams.push(...youtubeStreams);
-
-      // 3. Check official provider streams
-      const officialStreams = await this.findOfficialStreams(launch);
-      streams.push(...officialStreams);
-
-      // 4. Check Twitch streams
-      const twitchStreams = await this.searchTwitchStreams(launch);
-      streams.push(...twitchStreams);
-
-      // Sort by priority and remove duplicates
-      const uniqueStreams = this.deduplicateStreams(streams);
-      const sortedStreams = uniqueStreams.sort((a, b) => a.priority - b.priority);
-
-      console.log(`✅ Found ${sortedStreams.length} streams for ${missionName}`);
-      return sortedStreams;
-
     } catch (error) {
-      console.error(`❌ Error finding streams for ${missionName}:`, error);
-      return streams;
+      console.error('Stream mapping failed:', error);
     }
+    return this.deduplicateStreams(streams).sort((a, b) => a.priority - b.priority);
   }
 
-  async searchYouTubeLiveStreams(launch) {
-    const streams = [];
-    const provider = launch.launch_service_provider?.name?.toLowerCase() || '';
-    const missionName = launch.name || '';
+  // Provider stream hints disabled for now
+  async checkProviderStreams() { return []; }
 
+
+
+  // Official stream hints disabled for now
+  async checkOfficialStreams() { return []; }
+
+  async verifyStreamIsLive(url) {
     try {
-      // Search terms based on mission and provider
-      const searchTerms = this.generateSearchTerms(launch);
-      
-      for (const term of searchTerms.slice(0, 3)) { // Limit to 3 searches to avoid rate limits
-        const youtubeStreams = await this.searchYouTube(term, provider);
-        streams.push(...youtubeStreams);
+      // For YouTube videos, we could check the embed endpoint
+      if (url.includes('youtube.com/watch') || url.includes('youtu.be/')) {
+        // For YouTube videos, assume they're valid streams from API
+        return true;
       }
-
-      return streams;
+      
+      // For other URLs, we assume they're valid if they're from the API
+      return true;
     } catch (error) {
-      console.error('Error searching YouTube:', error);
-      return [];
+      console.error('Error verifying stream:', error);
+      return false;
     }
   }
-
-  generateSearchTerms(launch) {
-    const provider = launch.launch_service_provider?.name || '';
-    const missionName = launch.name || '';
-    const rocket = launch.rocket?.name || '';
-    
-    const terms = [
-      `${missionName} live stream`,
-      `${provider} ${missionName} launch`,
-      `${rocket} launch live`,
-      `${provider} launch today`,
-      `rocket launch live stream`,
-      `space launch live`
-    ];
-
-    return terms.filter(term => term.length > 10); // Remove too-short terms
+  
+  extractYouTubeVideoId(url) {
+    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    return match ? match[1] : null;
   }
-
-  async searchYouTube(searchTerm, provider) {
-    try {
-      // Use YouTube's search without API key (scraping approach)
-      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchTerm + ' live')}&sp=EgJAAQ%253D%253D`; // Live filter
+  
+  setupSmartAutoRefresh(launch, minutesUntilLaunch, hasStreams) {
+    const launchId = launch.id;
+    
+    // Clear existing interval for this launch
+    if (this.streamRefreshIntervals.has(launchId)) {
+      clearInterval(this.streamRefreshIntervals.get(launchId));
+      this.streamRefreshIntervals.delete(launchId);
+    }
+    
+    // Don't set up auto-refresh if:
+    // - Launch is more than 60 minutes away
+    // - Launch has already passed (more than 1 hour ago)
+    // - We already found streams
+    if (minutesUntilLaunch > 60 || minutesUntilLaunch < -60 || hasStreams) {
+      console.log(`⏹️ No auto-refresh needed for ${launch.name} (${minutesUntilLaunch}m, hasStreams: ${hasStreams})`);
+      return;
+    }
+    
+    // Set up auto-refresh every 1 minute when close to launch
+    console.log(`⏰ Setting up auto-refresh for ${launch.name} (${minutesUntilLaunch}m until launch)`);
+    
+    const interval = setInterval(async () => {
+      const now = new Date();
+      const currentMinutesUntil = Math.floor((new Date(launch.net) - now) / (1000 * 60));
       
-      // For now, return constructed URLs based on known channels
-      const streams = [];
-      const channelId = STREAM_SOURCES.youtube.channels[provider.toLowerCase().replace(/\s+/g, '')];
+      console.log(`🔄 Auto-refresh: Checking streams for ${launch.name} (${currentMinutesUntil}m until launch)`);
       
-      if (channelId) {
-        // Check if channel is likely to be streaming
-        const channelUrl = `https://www.youtube.com/channel/${channelId}/live`;
-        streams.push({
-          url: channelUrl,
-          source: 'youtube_channel',
-          platform: 'youtube',
-          priority: 2,
-          title: `${provider} Live Stream`,
-          description: `Official ${provider} channel live stream`
+      // Stop auto-refresh if launch has passed or is too far away
+      if (currentMinutesUntil < -60 || currentMinutesUntil > 60) {
+        console.log(`⏹️ Stopping auto-refresh for ${launch.name} (outside time window)`);
+        clearInterval(interval);
+        this.streamRefreshIntervals.delete(launchId);
+        return;
+      }
+      
+      // Check for streams
+      const streams = await this.findLiveStreams(launch);
+      
+      if (streams.length > 0) {
+        console.log(`✅ Auto-refresh found ${streams.length} streams for ${launch.name} - stopping auto-refresh`);
+        
+        // Update stored data with found streams
+        const { upcomingLaunches = [] } = await chrome.storage.local.get('upcomingLaunches');
+        const updatedLaunches = upcomingLaunches.map(storedLaunch => {
+          if (storedLaunch.id === launchId) {
+            return {
+              ...storedLaunch,
+              enhanced_streams: streams,
+              vid_urls: streams.length > 0 ? streams : storedLaunch.vid_urls || []
+            };
+          }
+          return storedLaunch;
         });
+        
+        await chrome.storage.local.set({ upcomingLaunches: updatedLaunches });
+        
+        // Notify popup to refresh
+        try {
+          chrome.runtime.sendMessage({ action: 'streamsFound', launchId: launchId });
+        } catch (error) {
+          // Popup might not be open, that's fine
+        }
+        
+        // Stop the interval
+        clearInterval(interval);
+        this.streamRefreshIntervals.delete(launchId);
       }
-
-      // Also add general search-based stream
-      const searchBasedUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchTerm + ' live')}&sp=EgJAAQ%253D%253D`;
-      streams.push({
-        url: searchBasedUrl,
-        source: 'youtube_search',
-        platform: 'youtube',
-        priority: 4,
-        title: `YouTube Search: ${searchTerm}`,
-        description: `Search results for ${searchTerm} live streams`
-      });
-
-      return streams;
-    } catch (error) {
-      console.error('YouTube search error:', error);
-      return [];
-    }
-  }
-
-  async findOfficialStreams(launch) {
-    const streams = [];
-    const provider = launch.launch_service_provider?.name?.toLowerCase() || '';
+    }, 60000); // Check every minute
     
-    // Get official stream URL for provider
-    const providerKey = provider.replace(/\s+/g, '').toLowerCase();
-    const officialUrl = STREAM_SOURCES.official[providerKey];
-    
-    if (officialUrl) {
-      streams.push({
-        url: officialUrl,
-        source: 'official',
-        platform: 'official',
-        priority: 1,
-        title: `${launch.launch_service_provider?.name} Official Stream`,
-        description: `Official live stream from ${launch.launch_service_provider?.name}`
-      });
-    }
-
-    // SpaceX specific handling
-    if (provider.includes('spacex')) {
-      streams.push({
-        url: 'https://www.spacex.com/launches/',
-        source: 'official',
-        platform: 'spacex',
-        priority: 1,
-        title: 'SpaceX Official Stream',
-        description: 'Official SpaceX launch stream'
-      });
-    }
-
-    // NASA specific handling
-    if (provider.includes('nasa')) {
-      streams.push({
-        url: 'https://www.nasa.gov/live',
-        source: 'official',
-        platform: 'nasa',
-        priority: 1,
-        title: 'NASA Live',
-        description: 'Official NASA live stream'
-      });
-    }
-
-    return streams;
-  }
-
-  async searchTwitchStreams(launch) {
-    const streams = [];
-    const searchTerms = this.generateSearchTerms(launch);
-
-    try {
-      // Check known space-related Twitch channels
-      for (const channel of STREAM_SOURCES.twitch.channels) {
-        streams.push({
-          url: `https://www.twitch.tv/${channel}`,
-          source: 'twitch',
-          platform: 'twitch',
-          priority: 3,
-          title: `${channel} on Twitch`,
-          description: `Live coverage on Twitch channel ${channel}`
-        });
-      }
-
-      return streams;
-    } catch (error) {
-      console.error('Twitch search error:', error);
-      return [];
-    }
+    // Store the interval reference
+    this.streamRefreshIntervals.set(launchId, interval);
   }
 
   detectPlatform(url) {
     if (url.includes('youtube.com') || url.includes('youtu.be')) return 'youtube';
-    if (url.includes('twitch.tv')) return 'twitch';
     if (url.includes('spacex.com')) return 'spacex';
     if (url.includes('nasa.gov')) return 'nasa';
     if (url.includes('facebook.com')) return 'facebook';
@@ -586,8 +727,18 @@ class LaunchTracker {
     return launchDate > now && launchDate <= twoWeeksFromNow;
   }
 
-  async checkUpcomingLaunches() {
+  async checkUpcomingLaunches(forceStreamRefresh = false) {
     const launches = await this.fetchLaunches();
+    
+    // Get user's preferred data provider and fetch video URLs if using SpaceDevs
+    const settings = await chrome.storage.sync.get(['dataProvider']);
+    const provider = settings.dataProvider || 'spacedevs';
+    
+    let spaceDevsVideoUrls = {};
+    if (provider === 'spacedevs') {
+      spaceDevsVideoUrls = await this.fetchSpaceDevsVideoUrls();
+    }
+    
     const now = new Date();
     const upcomingLaunches = [];
     
@@ -598,13 +749,42 @@ class LaunchTracker {
       
       // Check if launch is within the next 2 weeks (14 days = 20160 minutes)
       if (minutesUntilLaunch > 0 && minutesUntilLaunch <= 20160) {
-        upcomingLaunches.push({
-          ...launch,
-          minutesUntilLaunch
-        });
+        let enhancedLaunch = { ...launch, minutesUntilLaunch };
+        
+        // Smart stream checking: only check streams when needed
+        const shouldCheckStreams = this.shouldCheckStreamsForLaunch(launch, minutesUntilLaunch, forceStreamRefresh);
+        
+        if (shouldCheckStreams) {
+          console.log(`🔄 Checking streams for ${launch.name} (${minutesUntilLaunch}m until launch)`);
+          const streams = await this.findLiveStreams(launch);
+          enhancedLaunch.enhanced_streams = streams;
+          enhancedLaunch.vid_urls = streams.length > 0 ? streams : launch.vid_urls || [];
+          
+          // Track that we checked streams for this launch
+          this.lastStreamCheck.set(launch.id, now.getTime());
+          
+          // Set up auto-refresh if close to launch and no streams found
+          this.setupSmartAutoRefresh(launch, minutesUntilLaunch, streams.length > 0);
+        } else {
+          // Keep existing stream data if we're not refreshing
+          const existing = await this.getExistingLaunchData(launch.id);
+          if (existing) {
+            enhancedLaunch.enhanced_streams = existing.enhanced_streams || [];
+            enhancedLaunch.vid_urls = existing.vid_urls || launch.vid_urls || [];
+          }
+        }
+        
+        // Enhance with SpaceDevs video URLs if available
+        if (provider === 'spacedevs' && Object.keys(spaceDevsVideoUrls).length > 0) {
+          this.enhanceLaunchWithVideoUrls(enhancedLaunch, spaceDevsVideoUrls);
+        }
+        
+        upcomingLaunches.push(enhancedLaunch);
         
         // Schedule notification if within notification window
-        if (minutesUntilLaunch <= NOTIFICATION_ADVANCE) {
+        // Get user's notification timing preference
+        const { notificationTiming = 60 } = await chrome.storage.sync.get('notificationTiming');
+        if (minutesUntilLaunch <= notificationTiming) {
           await this.scheduleNotification(launch, minutesUntilLaunch);
         }
       }
@@ -620,10 +800,19 @@ class LaunchTracker {
     const next24Hours = upcomingLaunches.filter(launch => launch.minutesUntilLaunch <= 1440);
     await this.updateBadge(next24Hours.length);
     
-    console.log(`Found ${upcomingLaunches.length} upcoming launches (${next24Hours.length} in next 24h)`);
+    
   }
 
   async scheduleNotification(launch, minutesUntilLaunch) {
+    // Respect user settings
+    const { enableNotifications = true, soundNotifications = false } = await chrome.storage.sync.get([
+      'enableNotifications',
+      'soundNotifications'
+    ]);
+    if (!enableNotifications) {
+      return;
+    }
+
     const notificationId = `launch_${launch.id}`;
     
     // Check if we already sent this notification
@@ -640,6 +829,8 @@ class LaunchTracker {
       title: '🚀 Rocket Launch Alert!',
       message: `${launch.name} launches in ${minutesUntilLaunch} minutes`,
       contextMessage: launch.launch_service_provider?.name || 'Space Launch',
+      priority: 2,
+      requireInteraction: false,
       buttons: streamUrl ? [
         { title: 'Watch Stream' },
         { title: 'View Details' }
@@ -649,6 +840,11 @@ class LaunchTracker {
     };
     
     await chrome.notifications.create(notificationId, notificationOptions);
+
+    // Sound hint: Chrome notifications use OS settings for sound. If the user
+    // explicitly enabled sound reminders, ensure the OS sound is allowed.
+    // Custom sounds are not supported by chrome.notifications; implementing
+    // custom audio would require an offscreen document or a visible tab.
     
     // Mark as sent
     sentNotifications.push(notificationId);
@@ -696,26 +892,6 @@ class LaunchTracker {
     // Store settings
     await chrome.storage.sync.set(settings);
   }
-
-  async openPictureInPicture(streamUrl, launchName) {
-    try {
-      const tab = await chrome.tabs.create({
-        url: chrome.runtime.getURL('pip.html'),
-        active: false
-      });
-      
-      setTimeout(() => {
-        chrome.tabs.sendMessage(tab.id, {
-          action: 'initPiP',
-          streamUrl: streamUrl,
-          launchName: launchName
-        });
-      }, 500);
-      
-    } catch (error) {
-      console.error('Error opening PiP:', error);
-    }
-  }
 }
 
 // Initialize the tracker
@@ -725,6 +901,8 @@ const tracker = new LaunchTracker();
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'checkLaunches') {
     await tracker.checkUpcomingLaunches();
+  } else if (alarm.name === 'cleanup') {
+    await chrome.storage.local.set({ sentNotifications: [] });
   }
 });
 
@@ -740,7 +918,7 @@ chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIn
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   switch (message.action) {
     case 'refreshLaunches':
-      await tracker.checkUpcomingLaunches();
+      await tracker.checkUpcomingLaunches(true); // Force stream refresh
       sendResponse({ success: true });
       break;
     case 'settingsUpdated':
@@ -748,7 +926,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       await tracker.updateSettings(message.settings);
       break;
     case 'openPiP':
-      await tracker.openPictureInPicture(message.streamUrl, message.launchName);
+      // PiP functionality removed - handled as direct redirects in popup
       break;
   }
 });
@@ -768,8 +946,4 @@ chrome.alarms.create('cleanup', {
   periodInMinutes: 1440
 });
 
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === 'cleanup') {
-    await chrome.storage.local.set({ sentNotifications: [] });
-  }
-}); 
+// Consolidated alarm handler (cleanup functionality integrated above) 

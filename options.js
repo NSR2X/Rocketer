@@ -1,4 +1,5 @@
-// Options page script for Rocketer extension
+/** Rocketer options page controller */
+
 class RocketerOptions {
     constructor() {
         this.defaultSettings = {
@@ -7,21 +8,8 @@ class RocketerOptions {
             soundNotifications: false,
             updateInterval: 30,
             autoRefresh: true,
-            filterSpaceX: true,
-            filterNASA: true,
-            filterULA: true,
-            filterBlueOrigin: true,
-            filterRocketLab: true,
-            filterESA: true,
-            filterISRO: true,
-            filterJAXA: true,
-            filterCNSA: true,
-            filterRoscosmos: true,
-            filterOthers: true,
-            onlyWithStreams: false,
-            theme: 'auto',
-            compactMode: false,
-            showBadge: true
+            devMode: false,
+            dataProvider: 'spacedevs'
         };
         
         this.currentSettings = { ...this.defaultSettings };
@@ -32,6 +20,7 @@ class RocketerOptions {
         await this.loadSettings();
         this.setupEventListeners();
         this.applySettings();
+        this.showVersion();
     }
 
     async loadSettings() {
@@ -55,7 +44,7 @@ class RocketerOptions {
         });
 
         // Select dropdowns
-        const selects = ['notificationTiming', 'updateInterval', 'theme'];
+        const selects = ['notificationTiming', 'updateInterval', 'dataProvider'];
         selects.forEach(key => {
             const element = document.getElementById(key);
             if (element && element.tagName === 'SELECT') {
@@ -78,22 +67,9 @@ class RocketerOptions {
             this.refreshLaunches();
         });
 
-        document.getElementById('exportBtn').addEventListener('click', () => {
-            this.exportSettings();
-        });
 
-        document.getElementById('importBtn').addEventListener('click', () => {
-            this.importSettings();
-        });
+        // No extra test PiP controls anymore
 
-        document.getElementById('resetBtn').addEventListener('click', () => {
-            this.resetSettings();
-        });
-
-        // File input for import
-        document.getElementById('importFile').addEventListener('change', (event) => {
-            this.handleFileImport(event);
-        });
     }
 
     async handleSettingChange(input) {
@@ -126,33 +102,11 @@ class RocketerOptions {
     }
 
     applySettings() {
-        // Apply theme
-        this.applyTheme();
-        
         // Update notification status
         this.updateNotificationStatus();
     }
 
-    applyTheme() {
-        const theme = this.currentSettings.theme;
-        const body = document.body;
-        
-        // Remove existing theme classes
-        body.classList.remove('theme-light', 'theme-dark');
-        
-        if (theme === 'light') {
-            body.classList.add('theme-light');
-        } else if (theme === 'dark') {
-            body.classList.add('theme-dark');
-        } else {
-            // Auto theme - use system preference
-            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                body.classList.add('theme-dark');
-            } else {
-                body.classList.add('theme-light');
-            }
-        }
-    }
+
 
     async updateNotificationStatus() {
         if (this.currentSettings.enableNotifications) {
@@ -207,120 +161,19 @@ class RocketerOptions {
         }
     }
 
-    exportSettings() {
-        const settings = {
-            version: '1.0.0',
-            timestamp: new Date().toISOString(),
-            settings: this.currentSettings
-        };
-        
-        const blob = new Blob([JSON.stringify(settings, null, 2)], {
-            type: 'application/json'
-        });
-        
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `rocketer-settings-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        this.showSaveIndicator('Settings exported successfully!');
-    }
-
-    importSettings() {
-        document.getElementById('importFile').click();
-    }
-
-    async handleFileImport(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-        
-        try {
-            const text = await file.text();
-            const data = JSON.parse(text);
-            
-            if (data.settings) {
-                // Validate settings
-                const validatedSettings = this.validateImportedSettings(data.settings);
-                
-                // Update current settings
-                this.currentSettings = { ...this.defaultSettings, ...validatedSettings };
-                
-                // Save to storage
-                await chrome.storage.sync.set(this.currentSettings);
-                
-                // Update form
-                this.populateForm();
-                this.applySettings();
-                
-                this.showSaveIndicator('Settings imported successfully!');
-                
-                // Notify background script
-                await this.notifyBackgroundScript();
-                
-            } else {
-                throw new Error('Invalid settings file format');
-            }
-            
-        } catch (error) {
-            console.error('Error importing settings:', error);
-            this.showSaveIndicator('Error importing settings', 'error');
-        }
-        
-        // Reset file input
-        event.target.value = '';
-    }
-
-    validateImportedSettings(importedSettings) {
-        const validated = {};
-        
-        Object.keys(this.defaultSettings).forEach(key => {
-            if (importedSettings.hasOwnProperty(key)) {
-                const value = importedSettings[key];
-                const defaultValue = this.defaultSettings[key];
-                
-                // Type validation
-                if (typeof value === typeof defaultValue) {
-                    validated[key] = value;
-                } else {
-                    validated[key] = defaultValue;
-                }
-            } else {
-                validated[key] = this.defaultSettings[key];
-            }
-        });
-        
-        return validated;
-    }
 
     async resetSettings() {
-        if (!confirm('Are you sure you want to reset all settings to defaults? This action cannot be undone.')) {
-            return;
-        }
-        
+        // Reset removed in production; no-op
+    }
+
+    showVersion() {
+        const el = document.getElementById('appVersion');
+        if (!el) return;
         try {
-            // Clear all settings
-            await chrome.storage.sync.clear();
-            
-            // Reset to defaults
-            this.currentSettings = { ...this.defaultSettings };
-            await chrome.storage.sync.set(this.currentSettings);
-            
-            // Update form
-            this.populateForm();
-            this.applySettings();
-            
-            this.showSaveIndicator('Settings reset to defaults');
-            
-            // Notify background script
-            await this.notifyBackgroundScript();
-            
-        } catch (error) {
-            console.error('Error resetting settings:', error);
-            this.showSaveIndicator('Error resetting settings', 'error');
+            const manifest = chrome.runtime.getManifest();
+            el.textContent = `v${manifest.version}`;
+        } catch (_) {
+            // keep default
         }
     }
 
@@ -354,29 +207,9 @@ class RocketerOptions {
         }, 3000);
     }
 
-    // Listen for system theme changes
-    setupThemeListener() {
-        if (window.matchMedia) {
-            const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-            mediaQuery.addListener(() => {
-                if (this.currentSettings.theme === 'auto') {
-                    this.applyTheme();
-                }
-            });
-        }
-    }
+
 }
 
-// Initialize options page
-document.addEventListener('DOMContentLoaded', () => {
-    const options = new RocketerOptions();
-    
-    // Setup theme listener
-    options.setupThemeListener();
-    
-    // Add some additional UI enhancements
-    setupUIEnhancements();
-});
 
 function setupUIEnhancements() {
     // Add smooth scrolling for anchor links
@@ -404,8 +237,10 @@ function setupUIEnhancements() {
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             e.preventDefault();
             // Show save indicator as feedback
-            const options = new RocketerOptions();
-            options.showSaveIndicator('Settings are auto-saved!');
+            document.getElementById('saveIndicator').classList.add('show');
+            setTimeout(() => {
+                document.getElementById('saveIndicator').classList.remove('show');
+            }, 3000);
         }
         
         // Escape to close if in popup context
@@ -415,10 +250,25 @@ function setupUIEnhancements() {
     });
 }
 
+// Global options instance for message handling
+let globalOptions = null;
+
+// Initialize options page
+document.addEventListener('DOMContentLoaded', () => {
+    globalOptions = new RocketerOptions();
+    
+    // Add some additional UI enhancements
+    setupUIEnhancements();
+});
+
 // Handle messages from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'settingsRequested') {
         // Send current settings to requesting script
-        sendResponse({ settings: options.currentSettings });
+        if (globalOptions) {
+            sendResponse({ settings: globalOptions.currentSettings });
+        } else {
+            sendResponse({ settings: {} });
+        }
     }
 }); 

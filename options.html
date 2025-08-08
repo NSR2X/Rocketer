@@ -1,3 +1,11 @@
+<!--
+    Rocketer - Space Launch Tracker
+    Settings and options page
+    
+    @author Quantin BODIN
+    @version 1.3.0
+    @description Chrome extension settings page
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -14,7 +22,7 @@
                     <span class="rocket-icon">🚀</span>
                     <h1>Rocketer Settings</h1>
                 </div>
-                <div class="version">v1.0.0</div>
+                <div class="version" id="appVersion">v0.0.0</div>
             </div>
         </header>
 
@@ -89,116 +97,34 @@
                     </div>
                 </section>
 
-                <!-- Filters -->
-                <section class="settings-section">
-                    <h2>🔍 Launch Filters</h2>
-                    <div class="setting-item">
-                        <label class="setting-label">
-                            Show launches from
-                        </label>
-                        <div class="checkbox-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="filterSpaceX" class="filter-checkbox" checked>
-                                <span class="checkbox-custom"></span>
-                                SpaceX
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="filterNASA" class="filter-checkbox" checked>
-                                <span class="checkbox-custom"></span>
-                                NASA
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="filterULA" class="filter-checkbox" checked>
-                                <span class="checkbox-custom"></span>
-                                ULA
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="filterBlueOrigin" class="filter-checkbox" checked>
-                                <span class="checkbox-custom"></span>
-                                Blue Origin
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="filterRocketLab" class="filter-checkbox" checked>
-                                <span class="checkbox-custom"></span>
-                                Rocket Lab
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="filterESA" class="filter-checkbox" checked>
-                                <span class="checkbox-custom"></span>
-                                ESA
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="filterISRO" class="filter-checkbox" checked>
-                                <span class="checkbox-custom"></span>
-                                ISRO
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="filterJAXA" class="filter-checkbox" checked>
-                                <span class="checkbox-custom"></span>
-                                JAXA
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="filterCNSA" class="filter-checkbox" checked>
-                                <span class="checkbox-custom"></span>
-                                CNSA (China)
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="filterRoscosmos" class="filter-checkbox" checked>
-                                <span class="checkbox-custom"></span>
-                                Roscosmos
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="filterOthers" class="filter-checkbox" checked>
-                                <span class="checkbox-custom"></span>
-                                Other Providers
-                            </label>
-                        </div>
-                        <p class="setting-description">Select which launch providers to track</p>
-                    </div>
 
-                    <div class="setting-item">
-                        <label class="setting-label">
-                            <input type="checkbox" id="onlyWithStreams" class="setting-checkbox">
-                            <span class="checkbox-custom"></span>
-                            Only show launches with live streams
-                        </label>
-                        <p class="setting-description">Filter out launches without video streams</p>
-                    </div>
-                </section>
-
-                <!-- Appearance -->
+                <!-- Data Source -->
                 <section class="settings-section">
-                    <h2>🎨 Appearance</h2>
+                    <h2>📡 Data Source</h2>
                     <div class="setting-item">
-                        <label class="setting-label">
-                            Theme
-                        </label>
-                        <select id="theme" class="setting-select">
-                            <option value="auto" selected>Auto (System)</option>
-                            <option value="light">Light</option>
-                            <option value="dark">Dark</option>
+                        <label for="dataProvider" class="setting-label">Launch Data Provider</label>
+                        <select id="dataProvider" class="setting-select">
+                            <option value="spacedevs">TheSpaceDevs API (Default)</option>
+                            <option value="rocketlaunch">RocketLaunch.live</option>
                         </select>
-                        <p class="setting-description">Choose your preferred color theme</p>
-                    </div>
-
-                    <div class="setting-item">
-                        <label class="setting-label">
-                            <input type="checkbox" id="compactMode" class="setting-checkbox">
-                            <span class="checkbox-custom"></span>
-                            Compact popup layout
-                        </label>
-                        <p class="setting-description">Show more launches in less space</p>
-                    </div>
-
-                    <div class="setting-item">
-                        <label class="setting-label">
-                            <input type="checkbox" id="showBadge" class="setting-checkbox" checked>
-                            <span class="checkbox-custom"></span>
-                            Show launch count badge
-                        </label>
-                        <p class="setting-description">Display number of upcoming launches on extension icon</p>
+                        <p class="setting-description">Choose your preferred source for launch data</p>
                     </div>
                 </section>
+
+                <!-- Developer Options -->
+                <section class="settings-section">
+                    <h2>🛠️ Developer</h2>
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            <input type="checkbox" id="devMode" class="setting-checkbox">
+                            <span class="checkbox-custom"></span>
+                            Enable debug logs in popup
+                        </label>
+                        <p class="setting-description">For troubleshooting only. No effect on functionality.</p>
+                    </div>
+                </section>
+
+                
 
                 <!-- About & Info -->
                 <section class="settings-section">
@@ -208,35 +134,19 @@
                             <strong>Rocketer</strong> - Space Launch Tracker
                         </div>
                         <div class="about-item">
-                            Version 1.0.0
+                            <strong>Developer:</strong> Quantin BODIN
                         </div>
                         <div class="about-item">
-                            Data provided by <a href="https://thespacedevs.com/" target="_blank">The Space Devs API</a>
-                        </div>
-                        <div class="about-item">
-                            <a href="https://github.com/your-repo/rocketer" target="_blank" class="link">
+                            <a href="https://github.com/NSR2X" target="_blank" class="link">
                                 View on GitHub
                             </a>
                         </div>
                     </div>
 
-                    <div class="setting-item action-item">
-                        <div class="action-buttons">
-                            <button id="exportBtn" class="btn-secondary">
-                                <span class="btn-icon">📤</span>
-                                Export Settings
-                            </button>
-                            <button id="importBtn" class="btn-secondary">
-                                <span class="btn-icon">📥</span>
-                                Import Settings
-                            </button>
-                            <button id="resetBtn" class="btn-danger">
-                                <span class="btn-icon">🔄</span>
-                                Reset to Defaults
-                            </button>
-                        </div>
-                    </div>
+                    
                 </section>
+
+
             </div>
         </main>
 
@@ -248,8 +158,6 @@
         </footer>
     </div>
 
-    <!-- Hidden file input for import -->
-    <input type="file" id="importFile" accept=".json" style="display: none;">
 
     <script src="options.js"></script>
 </body>
