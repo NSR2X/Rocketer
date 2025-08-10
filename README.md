@@ -17,9 +17,7 @@ Chrome extension for tracking rocket launches with live streams and notification
 - Track upcoming launches from SpaceX, NASA, ULA, Blue Origin, etc.
 - Real-time countdown timers
 - Launch notifications 
-- Live stream discovery
-- Picture-in-picture viewing
-- Filter by launch providers
+- Live stream redirects
 - No setup required - works immediately
 
 ## Files Structure
@@ -29,12 +27,8 @@ Chrome extension for tracking rocket launches with live streams and notification
 - `background.js` - Launch tracking service
 - `popup.html/js` - Main interface
 - `options.html/js` - Settings page
-- `content.js` - Page notifications
-Removed PiP and player; streams open directly in new tabs.
 - `styles/` - CSS files
 - `icons/` - Extension icons
-
-Data from [The Space Devs API](https://thespacedevs.com/)
 
 ---
 **© 2025 Quantin BODIN. All rights reserved.**

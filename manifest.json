@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Rocketer - Space Launch Tracker",
   "version": "1.3.0",
-  "description": "Get alerts for upcoming rocket launches with direct links to live streams",
+  "description": "Get alerts for upcoming rocket launches and live streams",
   "author": "Quantin BODIN",
   "permissions": [
     "storage",
